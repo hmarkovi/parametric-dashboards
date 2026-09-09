@@ -11,19 +11,18 @@
     unzipping it and parsing the OOXML sheet/sharedStrings parts.
 
     Only the "Issues" sheet is imported. "Heat Map" is a live rollup (not stored
-    data), "Heat Map Overrides" is currently empty, and "Domain Dictionary" is
+    data), "Heat Map Overrides" is currently empty, and "NVLAX Domain Dictionary" is
     already seeded by the provisioning script from the design doc's ALIASES section.
 
 .NOTES
     Domain normalization: the raw "Domain" column (e.g. "SA-Atom", "Core / IA") is
     free text and is preserved as-is in the hidden Source Domain field. The visible
-    Domain field is derived from the Affected Domain Scope column using the
-    design doc's SPECIAL LOGIC, applied in reverse:
-      - scope == all 13 canonical domains  -> ALL
-      - scope == exact SA group (8 domains) -> SA
-      - scope == single canonical domain    -> that domain
-      - anything else (mixed sets)          -> SA (approximation; full detail
-                                                stays in Affected Domain Scope)
+    Domain field (multi-select) is derived from the Affected Domain Scope column,
+    resolving each token via direct match or the ALIASES table (e.g. IA -> Core):
+      - all tokens resolve, set == all 13 canonical domains -> ALL
+      - all tokens resolve, set == exact SA group (8 domains) -> SA
+      - all tokens resolve, otherwise -> the resolved domains listed directly
+      - any token unrecognized -> approximate to SA/ALL and flag for manual review
 
     Owner resolution: names are free text, sometimes multiple ("Lama A.; Lital M."),
     with no emails in the source data. Each name is searched against the tenant
@@ -33,7 +32,7 @@
 #>
 
 param(
-    [string]$SiteUrl        = "https://intel.sharepoint.com/sites/NVLAXParametricTracking",
+    [string]$SiteUrl        = "https://intel.sharepoint.com/sites/ybsclientidc",
     [string]$EvidenceLibUrl = "NVLAXParametricEvidence",
     [string]$ExcelPath      = "C:\Users\hmarkovi\Downloads\NVLAX_Parametric_Tracker_First_Draft_v2.xlsx"
 )

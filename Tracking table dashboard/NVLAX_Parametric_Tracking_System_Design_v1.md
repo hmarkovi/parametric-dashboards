@@ -8,15 +8,19 @@ Classification: Intel Internal Only
 Provide a single source of truth for NVLAX parametric status, open issues, evidence management, heat-map reporting, management reviews, historical tracking, and future automation.
 
 # SITE STRUCTURE
+Hosted on the existing site: https://intel.sharepoint.com/sites/ybsclientidc
+(no new site collection; no changes to existing site content, settings, or permissions -
+only net-new additions below)
 - NVLAX Parametric Open Issues (Microsoft List)
 - NVLAX Parametric Evidence (Document Library)
-- Domain Dictionary (Microsoft List)
-- Heat Map Overrides (Microsoft List)
+- NVLAX Domain Dictionary (Microsoft List)
+- NVLAX Heat Map Overrides (Microsoft List)
+- NVLAX Parametric Tracking (new dedicated page, landing/dashboard for this system)
 
 # SECURITY
-Owners Group: mpe.cdg.idc.pbs@intel.com
-Members: Explicitly added users plus issue owners.
-External sharing disabled.
+Inherits the existing ybsclientidc site's permissions and sharing settings as-is.
+No new owners group, no membership changes, no sharing-setting changes are made.
+Access is whatever a user already has on the existing site.
 
 # DOMAINS
 Atom, Ring, Core, GT, GTVPG, SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ
@@ -79,7 +83,7 @@ One folder per issue.
 Evidence links point to library, never OneNote.
 
 # EVIDENCE LINKING
-Library root: https://intel.sharepoint.com/sites/NVLAXParametricTracking/NVLAXParametricEvidence
+Library root: https://intel.sharepoint.com/sites/ybsclientidc/NVLAXParametricEvidence
 Folder naming: Issue-<ListItemID> (e.g. Issue-42), created at the same time as the issue.
 Folder path pattern: <Library root>/Issue-<ListItemID>
 On issue creation:
@@ -99,8 +103,8 @@ Manual overrides stored separately.
 Enable version history on:
 - Issue List
 - Evidence Library
-- Domain Dictionary
-- Heat Map Overrides
+- NVLAX Domain Dictionary
+- NVLAX Heat Map Overrides
 
 Recoverable:
 - List items
@@ -123,6 +127,8 @@ Evidence Missing
 
 # MIGRATION SOURCE
 Single source page: NVLAX Parametric OneNote page.
+Landing page: NVLAX Parametric Tracking page on the existing ybsclientidc site, embedding
+a view of the Open Issues list (replaces the earlier plan to link from Parametric-Team.aspx).
 
 # FUTURE EXTENSIONS
 Issue Aging
