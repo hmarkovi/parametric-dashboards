@@ -33,7 +33,9 @@ param(
 # 1. Connect to the existing site (no site creation, no admin connection needed)
 # ---------------------------------------------------------------------------
 try {
-    Connect-PnPOnline -Url $SiteUrl -Interactive -ErrorAction Stop
+    # DeviceLogin avoids the Windows Authentication Broker (WAM) used by -Interactive,
+    # which can fail with "Specified method is not supported" in some terminal hosts.
+    Connect-PnPOnline -Url $SiteUrl -DeviceLogin -ErrorAction Stop
 } catch {
     Write-Host "FAILED to connect to $SiteUrl - stopping here instead of cascading errors." -ForegroundColor Red
     Write-Host $_.Exception.Message -ForegroundColor Red
