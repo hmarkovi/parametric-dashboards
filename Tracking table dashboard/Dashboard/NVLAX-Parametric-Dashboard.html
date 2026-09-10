@@ -1,0 +1,143 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>NVLAX Parametric Tracking Dashboard</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 20px; background: #f3f2f1; color: #201f1e; }
+  h1 { margin-bottom: 0; }
+  .subtitle { color: #605e5c; margin-top: 4px; }
+  table { border-collapse: collapse; margin: 16px 0; width: 100%; background: #fff; }
+  th, td { border: 1px solid #d1d1d1; padding: 6px 10px; text-align: left; font-size: 13px; }
+  #heatmap th { background: #f3f2f1; }
+  #heatmap td { text-align: center; color: #fff; font-weight: 600; }
+  #heatmap td.na { background: #e1dfdd; color: #a19f9d; font-weight: 400; }
+  .badge { padding: 2px 8px; border-radius: 4px; color: #fff; font-weight: 600; display: inline-block; }
+  .controls { margin: 12px 0; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .controls input, .controls select { padding: 6px; border: 1px solid #d1d1d1; border-radius: 4px; }
+  #issues th { cursor: pointer; background: #f3f2f1; user-select: none; }
+  #issues th:hover { background: #e1dfdd; }
+  .legend span { margin-right: 12px; font-size: 12px; }
+  .legend .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; }
+</style>
+</head>
+<body>
+  <h1>NVLAX Parametric Tracking Dashboard</h1>
+  <div class="subtitle">Generated 2026-09-09 09:47 from the tracker Excel export - Intel Internal Only</div>
+
+  <h2>Heat Map (worst status wins)</h2>
+  <div class="legend">
+<span><span class='dot' style='background:#D13438'></span>Blocking</span>
+<span><span class='dot' style='background:#FF8C00'></span>Status Required</span>
+<span><span class='dot' style='background:#FFC83D'></span>Planned</span>
+<span><span class='dot' style='background:#0078D4'></span>In Progress</span>
+<span><span class='dot' style='background:#8764B8'></span>Monitoring</span>
+<span><span class='dot' style='background:#107C10'></span>Closed</span>
+  </div>
+  <table id="heatmap">
+    <tr><th>Domain</th><th>Vmin</th><th>SICC</th><th>Cdyn</th><th>DTS</th><th>PreSi</th><th>Content</th></tr>
+    <tr><th>Atom</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td style='background:#0078D4' title='In Progress'>In Progress</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>Ring</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>Core</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td style='background:#0078D4' title='In Progress'>In Progress</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>GT</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#0078D4' title='In Progress'>In Progress</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>GTVPG</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SAC</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SACD</th><td style='background:#FF8C00' title='Status Required'>Status Required</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SADPU</th><td style='background:#FF8C00' title='Status Required'>Status Required</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td style='background:#FF8C00' title='Status Required'>Status Required</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SAIOC</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SAME</th><td style='background:#FF8C00' title='Status Required'>Status Required</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SAN</th><td style='background:#FF8C00' title='Status Required'>Status Required</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td style='background:#FF8C00' title='Status Required'>Status Required</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SAPS</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+<tr><th>SAQ</th><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td style='background:#FFC83D' title='Planned'>Planned</td><td class='na'>-</td><td class='na'>-</td><td style='background:#D13438' title='Blocking'>Blocking</td></tr>
+
+  </table>
+
+  <h2>Open Issues</h2>
+  <div class="controls">
+    <input id="searchBox" type="text" placeholder="Search issues..." oninput="renderTable()">
+    <select id="domainFilter" onchange="renderTable()"><option value="">All Domains</option></select>
+    <select id="statusFilter" onchange="renderTable()"><option value="">All Statuses</option></select>
+    <select id="priorityFilter" onchange="renderTable()"><option value="">All Priorities</option></select>
+  </div>
+  <table id="issues">
+    <thead>
+      <tr>
+        <th onclick="sortBy('priority')">Priority</th>
+        <th onclick="sortBy('domain')">Domain</th>
+        <th onclick="sortBy('issue')">Issue</th>
+        <th onclick="sortBy('status')">Status</th>
+        <th onclick="sortBy('nextStep')">Next Step</th>
+        <th onclick="sortBy('timeline')">Timeline</th>
+        <th onclick="sortBy('owner')">Owner</th>
+        <th onclick="sortBy('parameter')">Parameter</th>
+        <th>Evidence</th>
+      </tr>
+    </thead>
+    <tbody id="issuesBody"></tbody>
+  </table>
+
+<script>
+const issues = [{"priority":"P1","domain":"SA-Atom","issue":"No Operational Content","status":"Blocking","nextStep":"Identify content/infrastructure gaps and enable operational content","timeline":"TBD","owner":"Unassigned","parameter":"Content","scope":"Atom","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P1","domain":"SAQ","issue":"4G Infrastructure Readiness","status":"Blocking","nextStep":"Validate whether 4G is needed; understand downflow infrastructure gaps","timeline":"25C TP","owner":"Lama A.; Lital M.","parameter":"Content","scope":"SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P1","domain":"Data","issue":"Aqua Lot Upload Failure","status":"Blocking","nextStep":"Root-cause debug with Class Team; related to broken Sort recovery string","timeline":"Active","owner":"Jonathan D.; Victor M.","parameter":"Content","scope":"Atom, Core, GT, GTVPG, Ring, SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"Core","issue":"Functional Content Disabled","status":"In Progress","nextStep":"Move to 5.3G and implement thermal fixes","timeline":"Active","owner":"Aika; Alon S.","parameter":"Content","scope":"Core","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SACD","issue":"Array Vmin bi-modal","status":"Status Required","nextStep":"Investigate pattern commonality and validate CMV","timeline":"","owner":"Unassigned","parameter":"Vmin","scope":"SACD","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SAME","issue":"SAME LFM Vmin is bi-modal","status":"Status Required","nextStep":"Define next action","timeline":"","owner":"Unassigned","parameter":"Vmin","scope":"SAME","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"NPU","issue":"NPU PreSi/PostSi Vmin gap","status":"Status Required","nextStep":"Define next action","timeline":"","owner":"Unassigned","parameter":"Vmin, PreSi","scope":"SADPU","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SAN","issue":"SAN TFM Vmin gap and flat VF behavior","status":"Status Required","nextStep":"Define next action","timeline":"","owner":"Unassigned","parameter":"Vmin, PreSi","scope":"SAN","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"Core","issue":"Core Frequency Limited by GT D2D","status":"In Progress","nextStep":"Assess GT limitation and expansion path","timeline":"TBD","owner":"Unassigned","parameter":"Content","scope":"Core","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"Core / IA","issue":"Core PreSi Curve Adjustment","status":"In Progress","nextStep":"Complete sensitivity analysis and update model","timeline":"WW38","owner":"Saif M.K.; Yizhar T.","parameter":"PreSi","scope":"Core","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"IA / Core","issue":"IA PreSi Guard Band Reduction","status":"Monitoring","nextStep":"Refresh NVLAX PreSi expectation and align guard band","timeline":"WW33","owner":"Moshe N.","parameter":"PreSi","scope":"Core","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SA / SICC-CDYN","issue":"SICC and CDYN Gap Model Refresh","status":"In Progress","nextStep":"Complete refreshed model","timeline":"WW32","owner":"Guy N.","parameter":"SICC, Cdyn","scope":"SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SA-Hub / SICC","issue":"HUB SICC Process Targeting","status":"In Progress","nextStep":"Review impact and make formal fab decision","timeline":"WW40","owner":"Racheli Levi; Hodayah Markovits","parameter":"SICC","scope":"SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SA-Hub","issue":"SA-Hub Domain Separation","status":"In Progress","nextStep":"Review real-life results","timeline":"WW32","owner":"Lital M.P.; Lama A.","parameter":"Vmin, Content","scope":"SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"Core","issue":"Core-AVX3 Separation","status":"In Progress","nextStep":"Execute DOE and implement infrastructure","timeline":"DOE WW32; Flow WW33","owner":"Wai Ying Wong","parameter":"Vmin, Content","scope":"Core","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P1","domain":"DTS / GT","issue":"DTS Coverage","status":"In Progress","nextStep":"Complete infrastructure and coverage closure","timeline":"TBD","owner":"Baruch; Pramod","parameter":"DTS","scope":"GT","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P3","domain":"SICC Multiplier","issue":"SICC and TDAU Calibration","status":"Monitoring","nextStep":"Check PostSi distribution","timeline":"WW33","owner":"Wai Ying Wong","parameter":"SICC","scope":"Atom, Core, GT, GTVPG, Ring, SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P3","domain":"All","issue":"PET DOE","status":"Planned","nextStep":"Execute PET DOE","timeline":"WW52","owner":"Libby Offir","parameter":"Vmin, SICC, Cdyn","scope":"Atom, Core, GT, GTVPG, Ring, SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P3","domain":"SA + GT + CPU","issue":"100MHz Resolution VF Per Domain","status":"Planned","nextStep":"Execute DOE after full content availability","timeline":"PO + 2WW","owner":"Lital M.P.; Lama A.","parameter":"Vmin","scope":"Core, GT, SAC, SACD, SADPU, SAIOC, SAME, SAN, SAPS, SAQ","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P2","domain":"SA-Atom / ITD","issue":"SA-Atom ITD Model Correlation","status":"In Progress","nextStep":"Complete DOE and determine model direction","timeline":"EOWW34; collection WW52","owner":"Thomas Jacob; Hodayah Markovits","parameter":"Vmin, PreSi","scope":"Atom","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"},{"priority":"P1","domain":"SA-Atom / HVM","issue":"SA-Atom Elastomer Degradation","status":"In Progress","nextStep":"Define mitigation, monitoring, alarms and implementation plan","timeline":"Ongoing","owner":"HVE Owners","parameter":"Vmin","scope":"Atom","evidence":"https://intel.sharepoint.com/sites/ybsclientidc/_layouts/Doc.aspx?sourcedoc=%7b15824A91-FCC3-4ADE-92B8-5D0293F31370%7d\u0026wd=target%28NVL.one%7CA2166A98-0726-4360-8C91-3AEE78BE9584%2FNVLAX%20Parametric%7C1EE03D30-5CBC-4A61-94E4-679B4B308A0F%2F%29\u0026wdpartid=%7b49B6713A-07BE-0234-36A0-7B3FC1233ABF%7d%7b1%7d\u0026wdsectionfileid=%7bE05A397F-23ED-48AD-9592-BF8F787D0AE8%7d\u0026end"}];
+const statusColors = { 'Closed': '#107C10', 'Monitoring': '#8764B8', 'Status Required': '#FF8C00', 'Planned': '#FFC83D', 'In Progress': '#0078D4', 'Blocking': '#D13438' };
+const priorityColors = { 'P1': '#D13438', 'P2': '#FFAA44', 'P3': '#107C10' };
+let sortKey = null, sortAsc = true;
+
+function populateFilters() {
+  const domains = [...new Set(issues.map(i => i.domain))].sort();
+  const statuses = [...new Set(issues.map(i => i.status))].sort();
+  const priorities = [...new Set(issues.map(i => i.priority))].sort();
+  const fill = (id, values) => {
+    const sel = document.getElementById(id);
+    values.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = v; sel.appendChild(o); });
+  };
+  fill('domainFilter', domains);
+  fill('statusFilter', statuses);
+  fill('priorityFilter', priorities);
+}
+
+function sortBy(key) {
+  if (sortKey === key) { sortAsc = !sortAsc; } else { sortKey = key; sortAsc = true; }
+  renderTable();
+}
+
+function renderTable() {
+  const q = document.getElementById('searchBox').value.toLowerCase();
+  const df = document.getElementById('domainFilter').value;
+  const sf = document.getElementById('statusFilter').value;
+  const pf = document.getElementById('priorityFilter').value;
+
+  let rows = issues.filter(i => {
+    if (df && i.domain !== df) return false;
+    if (sf && i.status !== sf) return false;
+    if (pf && i.priority !== pf) return false;
+    if (q && !Object.values(i).join(' ').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (sortKey) {
+    rows = rows.slice().sort((a, b) => {
+      const r = String(a[sortKey]).localeCompare(String(b[sortKey]));
+      return sortAsc ? r : -r;
+    });
+  }
+
+  const body = document.getElementById('issuesBody');
+  body.innerHTML = rows.map(i => `
+    <tr>
+      <td><span class="badge" style="background:${priorityColors[i.priority] || '#605e5c'}">${i.priority}</span></td>
+      <td>${i.domain}</td>
+      <td>${i.issue}</td>
+      <td><span class="badge" style="background:${statusColors[i.status] || '#605e5c'}">${i.status}</span></td>
+      <td>${i.nextStep}</td>
+      <td>${i.timeline}</td>
+      <td>${i.owner}</td>
+      <td>${i.parameter}</td>
+      <td>${i.evidence ? `<a href="${i.evidence}" target="_blank">View source</a>` : ''}</td>
+    </tr>`).join('');
+}
+
+populateFilters();
+renderTable();
+</script>
+</body>
+</html>
