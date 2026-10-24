@@ -590,93 +590,89 @@ If automated observations are enabled, place them in a separate box labeled `Aut
 
 ---
 
-## 11. Domain slide component B: VF curve
+## 11. Domain analysis model: two-stage contract
 
-### 11.1 Analytical definition
+### 11.1 Stage A: per-frequency normalization panel (Vmin vs UPM)
 
-A VF curve is the relationship between frequency and Vmin for a domain.
+This stage computes normalized values used by the VF curve.
+
+Required grouped scope:
+
+- `Domain`
+- `Frequency_GHz`
+- one user-selected primary comparison axis
+
+Allowed primary comparison axis:
+
+- `Product`
+- `TestProgram`
+- `DateBucket`
+- `UserDefinedCohort`
+
+Use exactly one primary axis per chart, with optional secondary split.
+
+Required unit-level fields:
+
+- `UnitID`
+- `Domain`
+- `Frequency_GHz`
+- `Vmin_V`
+- `UPM_Value`
+- `UPM_Target`
+- `Corner`
+- `TestProgram`
+- `Product`
+
+Computation for one domain-frequency-series bucket:
+
+1. Keep only valid paired unit-level points with both `Vmin_V` and `UPM_Value`.
+2. Fit:
+
+$$
+Vmin = a \cdot UPM + b
+$$
+
+3. Evaluate normalized value at target:
+
+$$
+Vmin_{norm} = a \cdot UPM_{target} + b
+$$
+
+4. Store `N`, slope, intercept, $R^2$, target value, and status.
+
+Panel requirements:
+
+- scatter of unit-level points
+- fit line overlay
+- title containing domain and frequency
+- subtitle containing basis and grouping axis
+- displayed `N` and target UPM
+
+Fallback and missing-data behavior:
+
+- missing UPM values or target: do not fit; mark series as median fallback candidate
+- insufficient paired-count threshold: do not fit; mark status as `Insufficient paired points`
+- if panel cannot be formed: preserve titled placeholder
+
+### 11.2 Stage B: VF curve derived from Stage A outputs
+
+The VF curve is built from frequency points using this precedence for each series:
+
+1. normalized-at-target values from Stage A where status is comparable
+2. median Vmin at each frequency when Stage A value is unavailable and fallback is allowed
+3. titled placeholder when neither normalized nor median point can be produced
+
+VF chart requirements:
 
 - x-axis: `Frequency (GHz)`
-- y-axis: `Vmin (V)`, `Median Vmin (V)`, or `Normalized Vmin (V)` depending on configuration
-- one curve per configured population or comparison series
-- each curve point is normally the median across valid units at a domain/frequency after filtering
-- individual unit records remain available in the Excel source sheet
+- y-axis: `Vmin (V)`
+- one line per comparison series
+- distinct marker and line style per series
+- direct end-of-line labels
+- legend entries include grouping axis and basis
+- warning note when normalized and median-fallback points are mixed in one chart
 
-The slide must explicitly state whether curve points represent:
-
-- raw per-unit Vmin traces
-- median Vmin by frequency
-- UPM-normalized median Vmin
-- median-normalized Vmin
-
-Do not label a curve merely `normalized` without naming the reference and formula.
-
-### 11.2 Supported normalization modes
-
-#### Mode 1: No normalization
-
-```text
-CurveValue = median(Vmin_V) by Product × Domain × Frequency_GHz
-```
-
-#### Mode 2: UPM-normalized
-
-```text
-UnitNormalizedVmin = Vmin_V - UPM_reference_V
-CurveValue = median(UnitNormalizedVmin) by Product × Domain × Frequency_GHz
-```
-
-Use only if the UPM field and normalization formula are configured.
-
-#### Mode 3: Median-normalized
-
-The anchor must be explicit. Example:
-
-```text
-ReferenceMedian = median(Vmin_V) at configured anchor frequency for each population
-UnitNormalizedVmin = Vmin_V - ReferenceMedian
-CurveValue = median(UnitNormalizedVmin) by Product × Domain × Frequency_GHz
-```
-
-If no anchor is specified, do not invent one. Use unnormalized medians or a placeholder according to configuration.
-
-### 11.3 Comparisons
-
-The user controls comparison scope in configuration:
-
-- single-product PostSi
-- multiple PostSi products
-- PostSi versus PreSi
-- any combination backed by valid raw/reference data
-
-Each line must have:
-
-- distinct color
-- distinct marker or line style, so meaning does not depend only on color
-- legend entry
-- direct label adjacent to the final valid point, with collision avoidance
-- product and basis, for example `NVLH | median Vmin`
-
-A warning must be shown when compared products use different process-speed or normalization scales.
-
-### 11.4 Interactivity
-
-Preferred implementation:
-
-- write chart source data to `<Domain>_VF` in the Excel workbook
-- create an editable Excel or native PowerPoint XY/line chart
-- embed the chart data in the PowerPoint so PowerPoint tooltips expose series, frequency, and value when editing/selecting the chart
-- retain a detailed source table with N, median, Q10, Q90, and missing count by series and frequency
-
-### 11.5 VF uncertainty
-
-Optionally show Q10-Q90 or Q25-Q75 error bars/ribbon when supported. Never display uncertainty bars without labeling the quantiles.
-
-### 11.6 Missing-data behavior
-
-- Frequency or Vmin absent: titled placeholder.
-- Requested comparison population absent: keep the available curve and add a small placeholder/note for the missing series.
-- Requested UPM normalization unavailable: apply the configured median fallback and label it, or create the titled placeholder.
+Do not publish an unlabeled `normalized` curve. The basis and formula must be explicit.
 
 ---
 
@@ -684,14 +680,14 @@ Optionally show Q10-Q90 or Q25-Q75 error bars/ribbon when supported. Never displ
 
 ### 12.1 Frequency selection
 
-For each domain and product:
+For each domain and series:
 
-1. Filter to valid Vmin and domain-relevant UPM records.
-2. Identify the highest `Frequency_GHz` with valid paired data.
-3. Require a configurable minimum paired-unit count. Recommended default: 20.
-4. If the absolute highest frequency has insufficient paired data, either:
-   - select the next-highest frequency meeting the threshold and label the selection rule, or
-   - leave a placeholder, according to configuration.
+1. collect frequencies with valid paired `Vmin_V` and `UPM_Value`
+2. sort frequencies high to low
+3. select the first frequency meeting minimum paired-count threshold
+4. if none meet threshold, keep titled placeholder
+
+If the top frequency is skipped for insufficient pairs, show this selection note in subtitle.
 
 ### 12.2 Plot definition
 
@@ -701,13 +697,11 @@ Title:
 
 - x-axis: `UPM value (<unit>)`
 - y-axis: `<Domain> Vmin at <Frequency> GHz (V)`
-- one point per UnitID
-- color by Product when several products are compared
-- optional fitted line per product
-- display N paired points
-- direct series labels where readable
+- one point per `UnitID`
+- optional fitted line per series
+- show `N` paired points per series
 
-If the domain has no configured UPM, keep the titled placeholder. Do not substitute an unrelated UPM.
+If no configured UPM is available for the domain, keep titled placeholder. Do not substitute unrelated UPM fields.
 
 ---
 
@@ -715,36 +709,33 @@ If the domain has no configured UPM, keep the titled placeholder. Do not substit
 
 ### 13.1 Purpose
 
-Show, for every domain-frequency combination, the percentage of valid units whose limiting content is Scan, Array, Functional, or another configured category.
+Show percent of eligible units where `Functional`, `Scan`, or `Array` content sets the limiter for each domain-frequency-series bucket.
 
 ### 13.2 Limiter classification
 
-If `LimiterType` is already present, map raw values through `limiter_mapping.yaml`.
+If `LimiterType` exists, map through `limiter_mapping.yaml`.
 
-If limiter must be derived:
+If limiter is derived:
 
-1. Group records by UnitID, Product, Domain, and Frequency.
-2. Compare the limiting Vmin requirement among content categories.
-3. The category with the maximum valid required Vmin is the limiter.
-4. If the top categories are tied within a configured voltage tolerance, set `LimiterType = Tie` rather than choosing arbitrarily.
-5. If required content data is incomplete, set `LimiterType = Unknown` and include it in the chart or quality report according to configuration.
+1. group by `UnitID`, series axis, `Domain`, and `Frequency_GHz`
+2. compute the limiting category from module-level required Vmin
+3. choose the category with maximum valid required Vmin
+4. if categories tie within configured tolerance, classify as `Tie`
+5. if source data is incomplete, classify as `Unknown`
+
+No proxy metric is allowed when classification inputs are absent.
 
 ### 13.3 Plot design
 
-Preferred chart: 100% stacked bar chart.
+Preferred chart: 100% stacked bar.
 
-- x-axis: ordered `<Domain> @ <Frequency> GHz` categories, or frequency alone when the slide is already domain-specific
-- y-axis: `Units (%)`, fixed at 0 to 100%
-- stack colors:
-  - Scan: configured blue
-  - Array: configured orange
-  - Functional: configured green
-  - Tie: gray
-  - Other/Unknown: light gray or hatched pattern
-- labels: percent inside sufficiently large segments
+- x-axis: frequency buckets in current domain
+- y-axis: `Units (%)` fixed to 0-100
+- stacks: `Functional`, `Scan`, `Array`, `Tie`, `Unknown`
+- labels: percent for sufficiently large segments
 - legend title: `Limiting content`
 
-Use percentage denominator equal to the number of units eligible for limiter classification at that frequency. Report the denominator in the workbook.
+Use denominator = eligible classified units only. Report denominator in source table.
 
 ---
 
@@ -752,7 +743,7 @@ Use percentage denominator equal to the number of units eligible for limiter cla
 
 ### 14.1 Purpose
 
-Show DTS temperature distribution per domain, frequency, corner, and test instance, with a 100°C target.
+Show DTS distribution by domain, frequency, corner, and test instance with `100°C` target reference.
 
 ### 14.2 Required chart
 
@@ -762,35 +753,29 @@ Title:
 
 Required dimensions:
 
-- filter: current slide domain
-- x-axis grouping: `Corner → Frequency → TestInstance`, ordered by configuration
+- filter: current domain
+- grouping: `Corner -> Frequency -> TestInstance`
 - y-axis: `DTS temperature (°C)`
-- one point per UnitID/test observation
-- color by test instance or corner
+- point basis: one unit observation
 
-Recommended plot form:
+Primary style:
 
-- box-and-whisker per group with individual points overlaid using horizontal jitter
-- use transparency for dense points
-- show median in each box
-- preserve unit-level values in Excel
+- box-and-whisker plus jittered points
+
+Density fallback style:
+
+- histogram view when configured readability threshold is exceeded
 
 Target annotation:
 
 - green horizontal line at `100°C`
-- line label near the right edge: `Target = 100°C`
+- label `Target = 100°C`
 
-Optional annotations:
-
-- N per group
-- median temperature per group
-- percentage above 100°C
-
-Only show the optional percentage if it is calculated from actual data.
+Show the active render mode in subtitle: `Box+Jitter` or `Histogram fallback`.
 
 ### 14.3 Missing-data behavior
 
-If DTS temperature, corner, frequency, or test-instance data is unavailable, keep the full titled placeholder and list the missing fields.
+If DTS, corner, frequency, or test-instance fields are unavailable for scope, keep titled placeholder and list missing fields.
 
 ---
 
@@ -798,30 +783,30 @@ If DTS temperature, corner, frequency, or test-instance data is unavailable, kee
 
 ### 15.1 Purpose
 
-Summarize corner names and their frequency values by Class test program. If multiple products are selected, give each product a separate matrix or separate section.
+Show available frequency points per test program and comparison series for the current domain.
 
 ### 15.2 Table structure
 
-Preferred structure:
+Preferred source structure:
 
 | Product | Test program | Corner | Domain | Frequency (GHz) | Active/Observed | Unit count |
 |---|---|---|---|---:|---|---:|
 
-For the compact slide table, pivot to:
+Compact slide matrix:
 
-- rows: corner names
-- columns: Class test programs or products/test programs
-- cell: frequency value in GHz
+- rows: corner (or configured row axis)
+- columns: test program (or configured column axis)
+- cell: sorted frequency list
 
-If several frequencies exist in the same cell, display a sorted comma-separated list. Do not average frequencies.
+Do not average frequencies.
 
 ### 15.3 Visual rules
 
 - title: `Flow matrix summary` or `<Product> flow matrix summary`
-- use green fill for observed/active combinations only if verified from data
-- use blank or gray cells for missing combinations
-- include a legend explaining fill meaning
-- keep full matrix data in Excel even if the slide uses a compact subset
+- use active-state fill only when verified from data
+- blank or gray for missing combinations
+- include legend
+- keep full matrix in source workbook even when slide uses compact form
 
 ---
 
@@ -1098,6 +1083,110 @@ The following cannot be determined reliably from the reference slides alone and 
 2. Exact mathematical definition of `normalized SICC`.
 3. Which UPM applies to every domain beyond the three material-characteristic die mappings supplied above.
 4. Which SICC test instance is authoritative when several are present.
+
+---
+
+## 24. Locked implementation decisions (2026-09-14)
+
+These decisions were provided by the user and are now part of the implementation baseline.
+
+### 24.1 Primary output and staging
+
+1. HTML and PowerPoint are equal-priority deliverables.
+2. Both outputs must be generated from the same panel definitions and data contracts.
+3. Preserve existing footer style, group logo, and group name area; chart and table graphics may be refreshed.
+
+### 24.2 Foil sequence for final outcome
+
+Use this narrative order for generated content:
+
+1. Opening foil
+2. Executive summary foil (space-saver KPI summary)
+3. Tracking table foil
+4. Material characteristics foil
+5. One VF foil per configured domain (target total story length is approximately 14 foils including fixed foils)
+6. Final normalized SICC foil
+
+Reserve one future extension slot for a Cdyn foil without changing the existing panel IDs.
+
+### 24.3 Normalization definition (Vmin and SICC)
+
+Default normalized metric for both Vmin and SICC is a linear-fit extrapolation to a user-specified UPM target:
+
+$$
+Y = a \cdot UPM + b
+$$
+
+where $Y$ is either $Vmin$ or $SICC$ for a configured domain/corner/test basis.
+
+The reported normalized value is:
+
+$$
+Y_{target} = a \cdot UPM_{target} + b
+$$
+
+Rules:
+
+1. Use only valid paired unit-level points.
+2. Require a configurable minimum paired count before fitting.
+3. Label every chart/table with the exact target UPM and basis.
+4. If UPM prints or target value are missing, do not fit. Show a notice and request user approval to switch to median fallback.
+
+### 24.4 UPM wildcard ambiguity policy
+
+If wildcard matching returns multiple UPM candidates for a required panel:
+
+1. Stop for that panel.
+2. Report all matching candidates.
+3. Request explicit user selection.
+4. Do not auto-pick first/coverage-based match.
+
+### 24.5 Wide-schema parsing assumptions from sample profiling
+
+Phase-1 profiling against the provided sample file confirmed a very wide schema (thousands of columns) with heavy use of encoded names. Implementation must support:
+
+1. Unit identity from `VISUAL_ID`.
+2. Lot scope from `LOTFROMFS` and operation-specific lot columns.
+3. Domain/frequency/core parsing from encoded ILAS-like names, for example:
+  - `ILAS_<DOMAIN><core>_..._Freq<value>_C<corner>_Vmin`
+  - matching setter/LP/MaxDTS companion columns.
+4. Multi-source Vmin/UPM/SICC candidates coexisting in one file; mapping remains configuration-driven and strict.
+
+### 24.6 Phase-1 executable added
+
+Implementation entry script created:
+
+- `Scripts/parametric-analysis/correlations/profile-nvlh-parametric-phase1.ps1`
+
+Script behavior:
+
+1. Reads large CSV directly from share/local path.
+2. Detects delimiter and headers.
+3. Samples rows for non-empty and numeric coverage per column.
+4. Produces canonical-field candidate mapping with `Proposed`, `Ambiguous`, or `Missing` status.
+5. Emits JSON + CSV + Markdown artifacts under `Scripts/parametric-analysis/correlations/output/nvlh-phase1-profile/`.
+
+### 24.7 Current implementation status snapshot
+
+Completed scripts:
+
+1. `Scripts/parametric-analysis/correlations/profile-nvlh-parametric-phase1.ps1`
+  - Phase-1 schema and token profiling.
+2. `Scripts/parametric-analysis/correlations/build-nvlh-phase2-canonical.ps1`
+  - Strict-mapping canonical Vmin long-form extraction.
+3. `Scripts/parametric-analysis/correlations/compute-nvlh-phase3-metrics.ps1`
+  - Reusable VF summary metrics and linear-fit `Vmin at target UPM` metrics.
+
+Current strict config:
+
+1. `Scripts/parametric-analysis/correlations/config/phase2_mapping.strict.json`
+  - Domain aliases expanded for SA-family tokens from sample.
+  - CPU/GT/HUB UPM selectors set to exact sample-verified columns.
+
+Current known data gaps from sample run:
+
+1. Some domain groups mapped to HUB have no configured target UPM in the strict config; these rows are marked `Missing UPM target` in phase-3 outputs.
+2. Some product/domain groups do not meet minimum paired-count for fitting and are marked `Insufficient paired points`.
 5. Exact domain membership/formula for `SA total` or its relation to HUB.
 6. Minimum unit count for a valid frequency or statistical fit.
 7. Outlier-handling rules.
@@ -1106,3 +1195,48 @@ The following cannot be determined reliably from the reference slides alone and 
 10. The authoritative rule for duplicate measurements without a reliable timestamp.
 
 Expose these items in YAML configuration and stop or create a placeholder when a required choice is unresolved.
+
+---
+
+## 25. In-repo skill pack for implementation
+
+Apply the following skill pack under the repository skills tree to keep the implementation deterministic and reusable.
+
+### 25.1 Skill location
+
+Create skills under:
+
+- `NVLH_Parametric-main/.github/skills/`
+
+This location already contains existing skills and should be used for the new pack.
+
+### 25.2 Required skills
+
+1. `nvlh-schema-token-resolution`
+  - strict wildcard/token matching
+  - ambiguity detection and stop-and-ask behavior
+  - canonical field mapping report
+2. `nvlh-normalization-vf-builder`
+  - Stage A per-frequency Vmin-vs-UPM normalization
+  - Stage B VF curve assembly with median fallback labels
+3. `nvlh-limiter-temperature-builder`
+  - limiter classification and 100% stacked pareto data
+  - DTS distribution data with Box+Jitter primary and histogram fallback
+4. `nvlh-html-ppt-parity-validator`
+  - panel ID parity checks
+  - title/basis/fallback text parity checks
+  - source table coverage checks for both outputs
+
+### 25.3 Skill usage rules
+
+1. Skills are optional orchestration helpers; they must not replace hard data-validation requirements.
+2. Skill output must preserve exact token names for configured UPM/SICC fields.
+3. Any unresolved dependency must result in a placeholder decision, never fabricated data.
+4. Skill results must be recorded in `run_manifest.json` for traceability.
+
+### 25.4 Skill acceptance checks
+
+1. Every generated graph traces back to a source table keyed by panel ID.
+2. VF charts clearly label each point/series basis: `Normalized-at-target` or `Median fallback`.
+3. Temperature panel render mode is explicitly labeled.
+4. Limiter denominator and eligibility criteria are visible in the source table.

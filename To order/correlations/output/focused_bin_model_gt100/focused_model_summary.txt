@@ -1,0 +1,76 @@
+Input CSV: R:\Products\PTL\PTLP12Xe\Analysis\2026_31_PTLP_DRACO_process analysis.csv
+Total rows scanned: 150509
+Rows used with numeric FUNCTIONAL_BIN_CLASSHOT: 150509
+Detected group column: Group Type
+Features analyzed: 296
+
+Group abundance snapshot (bin=100 vs bin>100):
+  POR>3K: total=135335, bin100=128681 (95.0833%), bin>100=6654 (4.9167%), ratio=0.0517, unique_gt100_bins=365
+  DRACO<3K: total=6879, bin100=6572 (95.5371%), bin>100=307 (4.4629%), ratio=0.0467, unique_gt100_bins=132
+  DRACO>3K: total=4486, bin100=4105 (91.5069%), bin>100=381 (8.4931%), ratio=0.0928, unique_gt100_bins=108
+  POR<3K: total=3809, bin100=3652 (95.8782%), bin>100=157 (4.1218%), ratio=0.0430, unique_gt100_bins=81
+
+Top 20 shared gt100 bin identity differences (DRACO>3K vs POR>3K):
+  bin=5600, draco=180 (47.2441%), por=209 (3.1410%), log2_lift=3.911, OR=27.560
+  bin=6160, draco=1 (0.2625%), por=177 (2.6601%), log2_lift=-3.341, OR=0.144
+  bin=7301, draco=1 (0.2625%), por=124 (1.8635%), log2_lift=-2.828, OR=0.207
+  bin=6100, draco=2 (0.5249%), por=239 (3.5918%), log2_lift=-2.775, OR=0.176
+  bin=996, draco=3 (0.7874%), por=331 (4.9745%), log2_lift=-2.659, OR=0.176
+  bin=3198, draco=5 (1.3123%), por=14 (0.2104%), log2_lift=2.641, OR=6.690
+  bin=6020, draco=1 (0.2625%), por=108 (1.6231%), log2_lift=-2.629, OR=0.238
+  bin=3224, draco=1 (0.2625%), por=104 (1.5630%), log2_lift=-2.574, OR=0.247
+  bin=2173, draco=2 (0.5249%), por=189 (2.8404%), log2_lift=-2.436, OR=0.225
+  bin=2100, draco=1 (0.2625%), por=68 (1.0219%), log2_lift=-1.961, OR=0.379
+  bin=8270, draco=1 (0.2625%), por=66 (0.9919%), log2_lift=-1.918, OR=0.391
+  bin=8260, draco=2 (0.5249%), por=116 (1.7433%), log2_lift=-1.732, OR=0.370
+  bin=6061, draco=1 (0.2625%), por=56 (0.8416%), log2_lift=-1.681, OR=0.460
+  bin=6280, draco=1 (0.2625%), por=55 (0.8266%), log2_lift=-1.655, OR=0.469
+  bin=4961, draco=12 (3.1496%), por=73 (1.0971%), log2_lift=1.521, OR=3.029
+  bin=9123, draco=1 (0.2625%), por=48 (0.7214%), log2_lift=-1.459, OR=0.537
+  bin=2062, draco=2 (0.5249%), por=92 (1.3826%), log2_lift=-1.397, OR=0.467
+  bin=1002, draco=2 (0.5249%), por=14 (0.2104%), log2_lift=1.319, OR=3.017
+  bin=9108, draco=2 (0.5249%), por=14 (0.2104%), log2_lift=1.319, OR=3.017
+  bin=4430, draco=1 (0.2625%), por=43 (0.6462%), log2_lift=-1.300, OR=0.599
+
+Top 15 exclusive gt100 bins (present in only one group):
+  bin=992, present_in=POR>3K, present_count=147, draco=0, por=147
+  bin=2807, present_in=POR>3K, present_count=106, draco=0, por=106
+  bin=1530, present_in=POR>3K, present_count=52, draco=0, por=52
+  bin=2020, present_in=POR>3K, present_count=52, draco=0, por=52
+  bin=1503, present_in=POR>3K, present_count=44, draco=0, por=44
+  bin=4510, present_in=POR>3K, present_count=43, draco=0, por=43
+  bin=4012, present_in=POR>3K, present_count=41, draco=0, por=41
+  bin=4580, present_in=POR>3K, present_count=40, draco=0, por=40
+  bin=4751, present_in=POR>3K, present_count=37, draco=0, por=37
+  bin=2711, present_in=POR>3K, present_count=33, draco=0, por=33
+  bin=3606, present_in=POR>3K, present_count=31, draco=0, por=31
+  bin=4760, present_in=POR>3K, present_count=31, draco=0, por=31
+  bin=9432, present_in=POR>3K, present_count=30, draco=0, por=30
+  bin=4730, present_in=POR>3K, present_count=29, draco=0, por=29
+  bin=8740, present_in=POR>3K, present_count=29, draco=0, por=29
+
+Top 20 feature influencers for gt100 vs 100:
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GT_1.200_1: r_pb=0.0744, d=2.0716, mean_gt100=0.5832, mean_100=0.5672, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GT_0.900_1: r_pb=0.0741, d=2.0633, mean_gt100=0.5479, mean_100=0.5275, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GTVG_0.900_1: r_pb=0.0741, d=2.0633, mean_gt100=0.5479, mean_100=0.5275, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GTVG_1.200_1: r_pb=0.0724, d=2.0156, mean_gt100=0.5538, mean_100=0.5373, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_ATOM_2.400_1: r_pb=0.0611, d=1.7000, mean_gt100=0.6941, mean_100=0.6663, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_ATOM_3.300_1: r_pb=0.0493, d=1.1597, mean_gt100=0.8945, mean_100=0.8682, n=(117,64346)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_ATOM_1.300_1: r_pb=0.0414, d=1.1494, mean_gt100=0.5338, mean_100=0.5093, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_ATOM_0.400_1: r_pb=0.0410, d=1.1397, mean_gt100=0.5340, mean_100=0.5095, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GT_0.400_1: r_pb=0.0393, d=1.0922, mean_gt100=0.5293, mean_100=0.5091, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GTVG_0.400_1: r_pb=0.0393, d=1.0922, mean_gt100=0.5293, mean_100=0.5091, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_CLR_2.200_1: r_pb=0.0360, d=1.0004, mean_gt100=0.6123, mean_100=0.5926, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_CLR_4.000_1: r_pb=0.0343, d=0.9539, mean_gt100=0.8572, mean_100=0.8369, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_SAN_0.550_1: r_pb=0.0337, d=0.9369, mean_gt100=0.5609, mean_100=0.5496, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_CLR_3.300_1: r_pb=0.0318, d=0.8843, mean_gt100=0.7363, mean_100=0.7229, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_SAME_1.200_1: r_pb=0.0287, d=0.7956, mean_gt100=0.7884, mean_100=0.7752, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_SAN_0.400_1: r_pb=0.0272, d=0.7557, mean_gt100=0.5571, mean_100=0.5477, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_CLR_0.400_1: r_pb=0.0269, d=0.7475, mean_gt100=0.5390, mean_100=0.5281, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_CLR_1.500_1: r_pb=0.0259, d=0.7201, mean_gt100=0.5377, mean_100=0.5276, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_GTVG_2.000_1: r_pb=0.0240, d=0.6656, mean_gt100=0.6512, mean_100=0.6458, n=(186,142934)
+  VA-IN-NA-GSDS_D_S::UPSVFPASSFLOW_CLASSHOT_SACD_0.312_1: r_pb=0.0240, d=0.6651, mean_gt100=0.5538, mean_100=0.5465, n=(186,142934)
+
+Top 20 feature influencers for DRACO>3K vs POR>3K within gt100:
+  SORT_Y_U1: r_pb=0.0035, d=0.0154, mean_draco=-0.4147, mean_por=-0.4991, n=(381,6636)
+  SORT_X_U1: r_pb=0.0019, d=0.0085, mean_draco=-0.5354, mean_por=-0.5612, n=(381,6636)
