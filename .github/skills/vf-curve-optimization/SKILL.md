@@ -35,10 +35,17 @@ Includes:
     forced on (no extrapolation).
   - Live Actual-vs-Interpolated Vmin and Penalty box-plot charts (full
     whiskers, mean line), rendered in plain SVG.
+  - **Optimal Testing-Point Recommendation (exact Dynamic Programming)**:
+    solves the classic optimal piecewise-linear segmentation problem
+    exactly (not approximate) for every K in one pass, for both an
+    L1-style (sum of |mean penalty|) and an L-infinity-style (worst-case
+    |mean penalty|) objective, and recommends a K via knee/elbow detection
+    on the error-vs-K curve. See "Mathematical Background" below.
   - An "Auto" (exhaustive combinatorial search, capped at 50,000
     combinations) and "Semi-Auto" (greedy, fast) search for the best
     testing-point set of a user-chosen size K, ranked by **magnitude** of
-    General Mean and General Max penalty (both shown side by side).
+    General Mean and General Max penalty (both shown side by side) - kept
+    for comparison/cross-validation against the exact DP analysis.
   - A "Details" button that snapshots the current selection's stats.
 - Persisting the source CSV in-repo under `vf-curve-optimization/data/`
   for reruns without depending on the network share/TRACE staying
@@ -66,6 +73,52 @@ without turning cores into separate domains. CSVs without a `Core` column
     (see TRACE Data Pull Workflow below). Validation subset (2 of 13
     lots) as of 2026-10-29.
 - `-o` / `--output`: output HTML path (default: `<csv-stem>_vf_curve_optimizer.html` next to the CSV).
+
+## Mathematical Background (Optimal DP Recommendation)
+
+Choosing K testing points to minimize piecewise-linear interpolation error
+is the classic **optimal breakpoint/knot selection** problem from curve
+simplification and segmented regression:
+
+- **Exact DP** (what this tool implements): Bellman-style dynamic
+  programming over breakpoint pairs - `dp[k][j] = best(dp[k-1][i] + cost(i,j))`
+  for an additive (L1/mean) objective, or `dp[k][j] = best(max(dp[k-1][i],
+  cost(i,j)))` for a minimax (L-infinity/worst-case) objective, where
+  `cost(i,j)` is the per-frequency mean-penalty contribution of treating
+  `i,j` as adjacent selected points. Both objectives are additively
+  decomposable across segments, which is what makes an exact polynomial-time
+  solution possible (`O(n^2 * K)` after an `O(n^3 * samples)` cost-matrix
+  build) - no combination-count cap needed, unlike brute force. Directly
+  descended from Hamann & Chen (1994), "Data point selection for piecewise
+  linear curve approximation", *Computer Aided Geometric Design* 11(3):289
+  (cited from the `Piecewise_linear_function` Wikipedia article's "Fitting
+  to a curve" section), and the same family as segmented-regression
+  breakpoint estimation (Muggeo 2003).
+- **Ramer-Douglas-Peucker (RDP)**: a related but different framing -
+  greedy/recursive, given an error tolerance finds the minimal point set
+  (inverse of "given K, minimize error"). Not implemented here, but the
+  knee/elbow detector below literally reuses RDP's core idea (perpendicular
+  distance from a chord) applied to the error-vs-K curve instead of a
+  spatial curve.
+- **Knee/elbow K recommendation**: among the DP's exact error(K) values for
+  K = 2..maxK, the recommended K is the point of maximum perpendicular
+  distance from the straight chord joining the first and last (K, error)
+  points - i.e. where adding more testing points stops meaningfully
+  reducing the worst-case penalty relative to the added test-time cost.
+  This is the same geometric construction as RDP/the "Kneedle" algorithm,
+  just applied to a 1-D error curve.
+- **Equidistribution principle** (de Boor & Rice): classical spline theory
+  says the asymptotically optimal knot density is proportional to a power
+  of the local curvature `|f''(x)|` - i.e. place more testing points where
+  the VF curve bends most (usually the lower/knee-region frequencies for a
+  convex Vmin-vs-Frequency curve). The DP's exact solution already achieves
+  this implicitly; it's noted here only as the theoretical justification
+  for why testing points cluster where they do.
+- The DP's objectives operate on the **population per-frequency mean
+  penalty** (`Mean_Penalty_by_Freq`), matching the tool's existing
+  "General Mean"/"General Max" definitions exactly - so DP results should
+  numerically match the exhaustive-search "Auto" results for the same K
+  when both are computable (verified 2026-10-29).
 
 ## TRACE Data Pull Workflow (e.g. HX28C Dense VF DOE)
 

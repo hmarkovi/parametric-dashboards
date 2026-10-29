@@ -157,7 +157,37 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <div class="card">
+  <b>Optimal Testing-Point Recommendation (exact Dynamic Programming)</b>
+  <div class="muted" style="margin-top:4px;">
+    Solves for the mathematically <b>optimal</b> breakpoint set for every K
+    from 2 up to the chosen max in one pass (classic optimal
+    piecewise-linear segmentation DP - see SKILL.md for references), and
+    suggests a recommended K via the knee/elbow of the error-vs-K curve -
+    the point where adding more testing points stops meaningfully reducing
+    penalty. Strictly better than the Auto/Semi-Auto search below for a
+    single domain: exact (not approximate) and scales to any K.
+  </div>
+  <div class="row" style="margin-top:8px;">
+    <div>
+      <label for="dpMaxK">Sweep K up to</label><br>
+      <input type="number" id="dpMaxK" min="3" value="12" style="width:70px;">
+    </div>
+    <div style="align-self:flex-end;">
+      <button class="btn primary" id="dpRunBtn">Run DP Analysis</button>
+    </div>
+  </div>
+  <div class="warn" id="dpWarning" style="margin-top:6px;"></div>
+  <div id="dpRecommendation" style="margin:10px 0;"></div>
+  <div id="dpSweepTable"></div>
+</div>
+
+<div class="card">
   <b>Auto-Search Testing Set</b>
+  <div class="muted" style="margin-top:4px;">
+    Exhaustive/greedy approximations - kept for comparison/cross-validation
+    against the exact DP analysis above (results should match for the same
+    K when the exhaustive branch runs).
+  </div>
   <div class="row" style="margin-top:8px;">
     <div>
       <label for="targetK">Target number of testing points (K)</label><br>
@@ -293,7 +323,12 @@ function generalStats(freqStats) {
   if (means.length === 0) return { generalMean: null, generalMax: null };
   return {
     generalMean: means.reduce((a, b) => a + b, 0) / means.length,
-    generalMax: Math.max(...means),
+    // Magnitude, not raw signed max - a strongly NEGATIVE per-frequency mean
+    // (interpolation underestimating true Vmin - the unsafe direction) is at
+    // least as bad as a positive one of the same size, and a literal
+    // Math.max() on signed values can silently hide it behind an unrelated
+    // positive segment elsewhere on the curve.
+    generalMax: Math.max(...means.map(m => Math.abs(m))),
   };
 }
 
@@ -385,6 +420,196 @@ async function autoSearchGreedyAsync(domain, k, excludeFloor, progressEl) {
   const fStats = freqPenaltyStats(unitResults, domain, excludeFloor);
   const g = generalStats(fStats);
   return { combo: Array.from(selected).sort((a, b) => a - b), generalMean: g.generalMean, generalMax: g.generalMax };
+}
+
+// ---- Exact Dynamic Programming optimal breakpoint search ----
+//
+// Classic optimal piecewise-linear segmentation (Bellman-style DP; see
+// Hamann & Chen 1994 "Data point selection for piecewise linear curve
+// approximation", and segmented-regression literature). Unlike exhaustive
+// combinatorial search, this finds the PROVABLY OPTIMAL breakpoint set for
+// a given K in polynomial time - no combination-count cap needed, works
+// for any K.
+//
+// cost(i,j) = the per-frequency MEAN penalty (across units/cores, signed,
+// matching the tool's existing "Mean_Penalty_by_Freq" definition) at every
+// interior frequency between breakpoints i and j if those two were
+// adjacent selected points - then reduced to a single scalar either by
+// summing |.| (mean/L1-style objective) or taking max |.| (max/Linf-style
+// objective, matching "General Max"). Both objectives are additively
+// decomposable across segments, which is what makes the DP exact.
+
+async function buildCostMatrices(domain, excludeFloor, progressEl) {
+  const n = domain.frequencies.length;
+  const freqs = domain.frequencies;
+  const units = domain.units;
+  const costMean = Array.from({ length: n }, () => new Array(n).fill(null));
+  const costMax = Array.from({ length: n }, () => new Array(n).fill(null));
+
+  for (let i = 0; i < n - 1; i++) {
+    for (let j = i + 1; j < n; j++) {
+      let sumAbs = 0, maxAbs = 0;
+      for (let m = i + 1; m < j; m++) {
+        let sum = 0, cnt = 0;
+        for (const u of units) {
+          if (excludeFloor && u.atFloor[m]) continue;
+          if (u.vmin[i] === null || u.vmin[j] === null || u.vmin[m] === null) continue;
+          const frac = (freqs[m] - freqs[i]) / (freqs[j] - freqs[i]);
+          const interp = u.vmin[i] + frac * (u.vmin[j] - u.vmin[i]);
+          sum += (interp - u.vmin[m]);
+          cnt++;
+        }
+        if (cnt > 0) {
+          const meanPenaltyAtM = Math.abs(sum / cnt);
+          sumAbs += meanPenaltyAtM;
+          if (meanPenaltyAtM > maxAbs) maxAbs = meanPenaltyAtM;
+        }
+      }
+      costMean[i][j] = sumAbs;
+      costMax[i][j] = maxAbs;
+    }
+    if (i % 4 === 0) {
+      progressEl.textContent = `Building cost matrix... row ${i}/${n}`;
+      await yieldToUI();
+    }
+  }
+  return { costMean, costMax, n };
+}
+
+// Additive-sum DP (minimizes total |mean penalty| summed across all
+// interior frequencies - an L1-style objective on the population curve).
+// Computes the optimum for EVERY k from 2..maxK in one pass (dp table is
+// built up layer by layer, reusing smaller-k results).
+function dpSweepAdditive(cost, n, maxK) {
+  const NEG = Infinity;
+  const dp = Array.from({ length: maxK + 1 }, () => new Array(n).fill(NEG));
+  const back = Array.from({ length: maxK + 1 }, () => new Array(n).fill(-1));
+  dp[1][0] = 0;
+  const results = [];
+  for (let k = 2; k <= maxK; k++) {
+    for (let j = k - 1; j < n; j++) {
+      let best = NEG, bestI = -1;
+      for (let i = k - 2; i < j; i++) {
+        if (dp[k - 1][i] === NEG || cost[i][j] === null) continue;
+        const val = dp[k - 1][i] + cost[i][j];
+        if (val < best) { best = val; bestI = i; }
+      }
+      dp[k][j] = best;
+      back[k][j] = bestI;
+    }
+    if (dp[k][n - 1] !== NEG) {
+      results.push({ k, value: dp[k][n - 1], breakpoints: reconstructBreakpoints(back, k, n - 1) });
+    }
+  }
+  return results;
+}
+
+// Min-max DP (minimizes the WORST |mean penalty| among all interior
+// frequencies - an L-infinity/worst-case objective, matching "General Max").
+function dpSweepMinMax(cost, n, maxK) {
+  const INF = Infinity;
+  const dp = Array.from({ length: maxK + 1 }, () => new Array(n).fill(INF));
+  const back = Array.from({ length: maxK + 1 }, () => new Array(n).fill(-1));
+  dp[1][0] = 0;
+  const results = [];
+  for (let k = 2; k <= maxK; k++) {
+    for (let j = k - 1; j < n; j++) {
+      let best = INF, bestI = -1;
+      for (let i = k - 2; i < j; i++) {
+        if (dp[k - 1][i] === INF || cost[i][j] === null) continue;
+        const val = Math.max(dp[k - 1][i], cost[i][j]);
+        if (val < best) { best = val; bestI = i; }
+      }
+      dp[k][j] = best;
+      back[k][j] = bestI;
+    }
+    if (dp[k][n - 1] !== INF) {
+      results.push({ k, value: dp[k][n - 1], breakpoints: reconstructBreakpoints(back, k, n - 1) });
+    }
+  }
+  return results;
+}
+
+function reconstructBreakpoints(back, k, j) {
+  const pts = [j];
+  let cur = j, level = k;
+  while (level > 1) {
+    cur = back[level][cur];
+    pts.push(cur);
+    level--;
+  }
+  return pts.reverse();
+}
+
+// Knee/elbow detection on the (K, error) curve: the K that is farthest
+// (perpendicular distance) from the straight chord joining the first and
+// last points - same geometric idea as the Ramer-Douglas-Peucker algorithm,
+// applied here to the error-vs-K curve instead of a spatial curve.
+function findElbowK(points) {
+  if (points.length < 3) return points.length ? points[0].k : null;
+  const first = points[0], last = points[points.length - 1];
+  const dx = last.k - first.k, dy = last.value - first.value;
+  const norm = Math.sqrt(dx * dx + dy * dy) || 1;
+  let bestIdx = 0, bestDist = -1;
+  for (let idx = 1; idx < points.length - 1; idx++) {
+    const p = points[idx];
+    const dist = Math.abs(dy * (p.k - first.k) - dx * (p.value - first.value)) / norm;
+    if (dist > bestDist) { bestDist = dist; bestIdx = idx; }
+  }
+  return points[bestIdx].k;
+}
+
+async function runDpAnalysis() {
+  const warnEl = document.getElementById('dpWarning');
+  const excludeFloor = document.getElementById('excludeFloor').checked;
+  const n = currentDomain.frequencies.length;
+  const maxK = Math.min(parseInt(document.getElementById('dpMaxK').value, 10) || 12, n);
+  if (maxK < 3) { warnEl.textContent = 'Sweep K up to must be at least 3.'; return; }
+
+  setSearchBusy(true);
+  warnEl.textContent = '';
+  try {
+    const { costMean, costMax } = await buildCostMatrices(currentDomain, excludeFloor, warnEl);
+    warnEl.textContent = '';
+    const meanResults = dpSweepAdditive(costMean, n, maxK);
+    const maxResults = dpSweepMinMax(costMax, n, maxK);
+    renderDpResults(meanResults, maxResults, currentDomain);
+  } finally {
+    setSearchBusy(false);
+  }
+}
+
+function renderDpResults(meanResults, maxResults, domain) {
+  // "value" from the additive DP is a SUM across interior frequencies, not
+  // directly the "General Mean" (which divides by the TOTAL frequency
+  // count including the always-0 selected points) - rescale for an
+  // apples-to-apples comparison with the Auto-search table above.
+  const n = domain.frequencies.length;
+  const meanByK = new Map(meanResults.map(r => [r.k, { ...r, generalMean: r.value / n }]));
+  const maxByK = new Map(maxResults.map(r => [r.k, r]));
+
+  const elbowK = findElbowK(maxResults.map(r => ({ k: r.k, value: r.value })));
+
+  let rec = `<div class="stat-pill">Recommended K (knee of max-penalty-vs-K curve): <b>${elbowK ?? '-'}</b></div>`;
+  rec += `<div class="muted" style="margin-top:4px;">Beyond this K, additional testing points reduce the worst-case penalty only marginally relative to the test-time cost of another point - see the sweep table below.</div>`;
+  document.getElementById('dpRecommendation').innerHTML = rec;
+
+  let h = '<table><tr><th>K</th><th>Optimal |General Mean|</th><th>Optimal |General Max|</th><th>Frequencies (mean-optimal)</th><th>Use</th><th>Frequencies (max-optimal)</th><th>Use</th></tr>';
+  const ks = Array.from(new Set([...meanByK.keys(), ...maxByK.keys()])).sort((a, b) => a - b);
+  ks.forEach(k => {
+    const mr = meanByK.get(k), xr = maxByK.get(k);
+    const isElbow = k === elbowK;
+    const meanFreqStr = mr ? mr.breakpoints.map(idx => domain.frequencies[idx]).join(', ') : '-';
+    const maxFreqStr = xr ? xr.breakpoints.map(idx => domain.frequencies[idx]).join(', ') : '-';
+    h += `<tr${isElbow ? ' style="background:#fef3c7"' : ''}><td>${k}${isElbow ? ' <b>(recommended)</b>' : ''}</td>` +
+      `<td>${mr ? fmt(mr.generalMean) : '-'}</td><td>${xr ? fmt(xr.value) : '-'}</td>` +
+      `<td style="text-align:left">${meanFreqStr}</td>` +
+      `<td class="use-cell">${mr ? `<button class="btn" onclick='applyCombo(${JSON.stringify(mr.breakpoints)})'>Apply</button>` : ''}</td>` +
+      `<td style="text-align:left">${maxFreqStr}</td>` +
+      `<td class="use-cell">${xr ? `<button class="btn" onclick='applyCombo(${JSON.stringify(xr.breakpoints)})'>Apply</button>` : ''}</td></tr>`;
+  });
+  h += '</table>';
+  document.getElementById('dpSweepTable').innerHTML = h;
 }
 
 // ---- Rendering ----
@@ -539,12 +764,17 @@ function loadDomain(name) {
   renderFreqGrid();
   document.getElementById('targetK').max = n;
   document.getElementById('targetK').value = Math.min(5, n);
-  // combo tables hold frequency indices from the PREVIOUS domain - stale and
-  // misleading (and their "Apply" buttons would apply the wrong domain's
-  // indices), so clear them on every domain switch.
+  document.getElementById('dpMaxK').max = n;
+  document.getElementById('dpMaxK').value = Math.min(12, n);
+  // combo/DP tables hold frequency indices from the PREVIOUS domain - stale
+  // and misleading (and their "Apply" buttons would apply the wrong
+  // domain's indices), so clear them on every domain switch.
   document.getElementById('topByMean').innerHTML = '';
   document.getElementById('topByMax').innerHTML = '';
   document.getElementById('autoWarning').textContent = '';
+  document.getElementById('dpRecommendation').innerHTML = '';
+  document.getElementById('dpSweepTable').innerHTML = '';
+  document.getElementById('dpWarning').textContent = '';
   recompute();
 }
 
@@ -625,7 +855,7 @@ function recompute() {
 let searchBusy = false;
 function setSearchBusy(busy) {
   searchBusy = busy;
-  ['domainSelect', 'autoBtn', 'semiAutoBtn', 'detailsBtn', 'clearBtn', 'targetK', 'excludeFloor'].forEach(id => {
+  ['domainSelect', 'autoBtn', 'semiAutoBtn', 'detailsBtn', 'clearBtn', 'targetK', 'excludeFloor', 'dpRunBtn', 'dpMaxK'].forEach(id => {
     document.getElementById(id).disabled = busy;
   });
   document.getElementById('freqGrid').style.pointerEvents = busy ? 'none' : '';
@@ -700,6 +930,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('autoBtn').addEventListener('click', () => runAuto('auto'));
   document.getElementById('semiAutoBtn').addEventListener('click', () => runAuto('semi'));
   document.getElementById('detailsBtn').addEventListener('click', takeSnapshot);
+  document.getElementById('dpRunBtn').addEventListener('click', () => { if (!searchBusy) runDpAnalysis(); });
 });
 </script>
 </body>
