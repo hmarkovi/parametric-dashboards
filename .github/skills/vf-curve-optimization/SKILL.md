@@ -40,7 +40,15 @@ Includes:
     exactly (not approximate) for every K in one pass, for both an
     L1-style (sum of |mean penalty|) and an L-infinity-style (worst-case
     |mean penalty|) objective, and recommends a K via knee/elbow detection
-    on the error-vs-K curve. See "Mathematical Background" below.
+    on the error-vs-K curve. Defaults to sweeping every K up to the
+    domain's full point count (not a capped preview) so the complete
+    achievable-error curve is visible. Optional **range constraint**: a
+    From/To GHz window plus a max allowed |penalty| (V) that the DP
+    enforces as a hard constraint - any breakpoint pair that leaves a
+    constrained frequency under-resolved is excluded from the search
+    entirely, forcing points to concentrate in that window; K values with
+    no feasible arrangement are reported as "infeasible" and the minimum
+    feasible K is called out. See "Mathematical Background" below.
   - An "Auto" (exhaustive combinatorial search, capped at 50,000
     combinations) and "Semi-Auto" (greedy, fast) search for the best
     testing-point set of a user-chosen size K, ranked by **magnitude** of
@@ -119,6 +127,22 @@ simplification and segmented regression:
   "General Mean"/"General Max" definitions exactly - so DP results should
   numerically match the exhaustive-search "Auto" results for the same K
   when both are computable (verified 2026-10-29).
+- **Range constraint as a hard feasibility filter**: a common real request
+  is "the interpolation error between F1 and F2 must stay below X" (a
+  local accuracy requirement, not just a global one). Implemented by
+  marking any segment `(i,j)` infeasible (cost = null, excluded from the
+  DP exactly like an unreachable state) if it would leave a frequency
+  inside the constrained window above the allowed `|penalty|` - this is a
+  hard constraint, not a penalty/soft term, so the DP is forced to add
+  breakpoints inside the window rather than trade off against it. If no
+  arrangement satisfies the constraint for a given K, that K has no
+  table row (reported as "infeasible"); the smallest K with a feasible
+  row is surfaced directly. Verified 2026-10-29: CCF domain, constraint
+  ≤ 0.01V for 1.4-2.0 GHz → minimum feasible K = 4, and the chosen
+  breakpoints' actual per-frequency penalty in that window (independently
+  recomputed via the trusted `computePenaltyMatrix` pipeline) was ≤
+  0.0098V at every point - confirms correctness, not just a plausible
+  answer.
 
 ## TRACE Data Pull Workflow (e.g. HX28C Dense VF DOE)
 

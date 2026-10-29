@@ -165,7 +165,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     suggests a recommended K via the knee/elbow of the error-vs-K curve -
     the point where adding more testing points stops meaningfully reducing
     penalty. Strictly better than the Auto/Semi-Auto search below for a
-    single domain: exact (not approximate) and scales to any K.
+    single domain: exact (not approximate) and scales to any K. Defaults to
+    sweeping every K up to the domain's full point count so you can see the
+    complete achievable-error curve, not just a capped preview.
   </div>
   <div class="row" style="margin-top:8px;">
     <div>
@@ -175,6 +177,32 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
     <div style="align-self:flex-end;">
       <button class="btn primary" id="dpRunBtn">Run DP Analysis</button>
     </div>
+  </div>
+  <div class="row" style="margin-top:10px; align-items:flex-end;">
+    <div>
+      <label><input type="checkbox" id="rangeConstraintEnabled"> <b>Require tighter accuracy in a specific frequency range</b></label>
+    </div>
+  </div>
+  <div class="row" style="margin-top:6px;">
+    <div>
+      <label for="rangeFrom">From (GHz)</label><br>
+      <input type="number" id="rangeFrom" step="any" style="width:90px;">
+    </div>
+    <div>
+      <label for="rangeTo">To (GHz)</label><br>
+      <input type="number" id="rangeTo" step="any" style="width:90px;">
+    </div>
+    <div>
+      <label for="rangeMaxError">Max allowed |interpolation penalty| in range (V)</label><br>
+      <input type="number" id="rangeMaxError" step="any" value="0.01" style="width:110px;">
+    </div>
+  </div>
+  <div class="muted" style="margin-top:4px;">
+    When enabled, the DP search only accepts testing-point sets that keep
+    the interpolation penalty below this threshold for every frequency
+    inside [From, To] - it will spread points more densely there even if
+    that's not globally optimal elsewhere. K values where no arrangement
+    can satisfy the constraint are marked infeasible.
   </div>
   <div class="warn" id="dpWarning" style="margin-top:6px;"></div>
   <div id="dpRecommendation" style="margin:10px 0;"></div>
@@ -439,7 +467,7 @@ async function autoSearchGreedyAsync(domain, k, excludeFloor, progressEl) {
 // objective, matching "General Max"). Both objectives are additively
 // decomposable across segments, which is what makes the DP exact.
 
-async function buildCostMatrices(domain, excludeFloor, progressEl) {
+async function buildCostMatrices(domain, excludeFloor, progressEl, rangeConstraint) {
   const n = domain.frequencies.length;
   const freqs = domain.frequencies;
   const units = domain.units;
@@ -448,7 +476,7 @@ async function buildCostMatrices(domain, excludeFloor, progressEl) {
 
   for (let i = 0; i < n - 1; i++) {
     for (let j = i + 1; j < n; j++) {
-      let sumAbs = 0, maxAbs = 0;
+      let sumAbs = 0, maxAbs = 0, violatesRange = false;
       for (let m = i + 1; m < j; m++) {
         let sum = 0, cnt = 0;
         for (const u of units) {
@@ -463,10 +491,20 @@ async function buildCostMatrices(domain, excludeFloor, progressEl) {
           const meanPenaltyAtM = Math.abs(sum / cnt);
           sumAbs += meanPenaltyAtM;
           if (meanPenaltyAtM > maxAbs) maxAbs = meanPenaltyAtM;
+          if (rangeConstraint && freqs[m] >= rangeConstraint.from && freqs[m] <= rangeConstraint.to
+              && meanPenaltyAtM > rangeConstraint.maxError) {
+            violatesRange = true;
+          }
         }
       }
-      costMean[i][j] = sumAbs;
-      costMax[i][j] = maxAbs;
+      // A segment that leaves a user-constrained frequency under-resolved is
+      // not a valid building block at all - excluding it here (cost = null)
+      // reuses the DP's existing "unreachable" handling, so the optimizer
+      // is forced to add more breakpoints inside the constrained range.
+      if (!violatesRange) {
+        costMean[i][j] = sumAbs;
+        costMax[i][j] = maxAbs;
+      }
     }
     if (i % 4 === 0) {
       progressEl.textContent = `Building cost matrix... row ${i}/${n}`;
@@ -563,23 +601,35 @@ async function runDpAnalysis() {
   const warnEl = document.getElementById('dpWarning');
   const excludeFloor = document.getElementById('excludeFloor').checked;
   const n = currentDomain.frequencies.length;
-  const maxK = Math.min(parseInt(document.getElementById('dpMaxK').value, 10) || 12, n);
+  const maxK = Math.min(parseInt(document.getElementById('dpMaxK').value, 10) || n, n);
   if (maxK < 3) { warnEl.textContent = 'Sweep K up to must be at least 3.'; return; }
+
+  let rangeConstraint = null;
+  if (document.getElementById('rangeConstraintEnabled').checked) {
+    const from = parseFloat(document.getElementById('rangeFrom').value);
+    const to = parseFloat(document.getElementById('rangeTo').value);
+    const maxError = parseFloat(document.getElementById('rangeMaxError').value);
+    if (Number.isNaN(from) || Number.isNaN(to) || Number.isNaN(maxError) || from >= to || maxError <= 0) {
+      warnEl.textContent = 'Range constraint needs a valid From < To and a positive max error.';
+      return;
+    }
+    rangeConstraint = { from, to, maxError };
+  }
 
   setSearchBusy(true);
   warnEl.textContent = '';
   try {
-    const { costMean, costMax } = await buildCostMatrices(currentDomain, excludeFloor, warnEl);
+    const { costMean, costMax } = await buildCostMatrices(currentDomain, excludeFloor, warnEl, rangeConstraint);
     warnEl.textContent = '';
     const meanResults = dpSweepAdditive(costMean, n, maxK);
     const maxResults = dpSweepMinMax(costMax, n, maxK);
-    renderDpResults(meanResults, maxResults, currentDomain);
+    renderDpResults(meanResults, maxResults, currentDomain, maxK, rangeConstraint);
   } finally {
     setSearchBusy(false);
   }
 }
 
-function renderDpResults(meanResults, maxResults, domain) {
+function renderDpResults(meanResults, maxResults, domain, maxK, rangeConstraint) {
   // "value" from the additive DP is a SUM across interior frequencies, not
   // directly the "General Mean" (which divides by the TOTAL frequency
   // count including the always-0 selected points) - rescale for an
@@ -590,24 +640,32 @@ function renderDpResults(meanResults, maxResults, domain) {
 
   const elbowK = findElbowK(maxResults.map(r => ({ k: r.k, value: r.value })));
 
-  let rec = `<div class="stat-pill">Recommended K (knee of max-penalty-vs-K curve): <b>${elbowK ?? '-'}</b></div>`;
+  let rec = '';
+  if (rangeConstraint) {
+    const firstFeasibleK = Array.from({ length: maxK - 1 }, (_, idx) => idx + 2).find(k => maxByK.has(k));
+    rec += `<div class="stat-pill">Constraint: |penalty| &le; ${fmt(rangeConstraint.maxError)} V for ${rangeConstraint.from}-${rangeConstraint.to} GHz</div>`;
+    rec += firstFeasibleK
+      ? `<div class="stat-pill">Minimum K that satisfies this constraint: <b>${firstFeasibleK}</b></div>`
+      : `<div class="warn">No K up to ${maxK} can satisfy this constraint - raise "Sweep K up to", widen the range, or loosen the max error.</div>`;
+  }
+  rec += `<div class="stat-pill">Recommended K (knee of max-penalty-vs-K curve): <b>${elbowK ?? '-'}</b></div>`;
   rec += `<div class="muted" style="margin-top:4px;">Beyond this K, additional testing points reduce the worst-case penalty only marginally relative to the test-time cost of another point - see the sweep table below.</div>`;
   document.getElementById('dpRecommendation').innerHTML = rec;
 
   let h = '<table><tr><th>K</th><th>Optimal |General Mean|</th><th>Optimal |General Max|</th><th>Frequencies (mean-optimal)</th><th>Use</th><th>Frequencies (max-optimal)</th><th>Use</th></tr>';
-  const ks = Array.from(new Set([...meanByK.keys(), ...maxByK.keys()])).sort((a, b) => a - b);
-  ks.forEach(k => {
+  for (let k = 2; k <= maxK; k++) {
     const mr = meanByK.get(k), xr = maxByK.get(k);
     const isElbow = k === elbowK;
-    const meanFreqStr = mr ? mr.breakpoints.map(idx => domain.frequencies[idx]).join(', ') : '-';
-    const maxFreqStr = xr ? xr.breakpoints.map(idx => domain.frequencies[idx]).join(', ') : '-';
+    const infeasible = rangeConstraint && !mr && !xr;
+    const meanFreqStr = mr ? mr.breakpoints.map(idx => domain.frequencies[idx]).join(', ') : (infeasible ? 'infeasible' : '-');
+    const maxFreqStr = xr ? xr.breakpoints.map(idx => domain.frequencies[idx]).join(', ') : (infeasible ? 'infeasible' : '-');
     h += `<tr${isElbow ? ' style="background:#fef3c7"' : ''}><td>${k}${isElbow ? ' <b>(recommended)</b>' : ''}</td>` +
       `<td>${mr ? fmt(mr.generalMean) : '-'}</td><td>${xr ? fmt(xr.value) : '-'}</td>` +
       `<td style="text-align:left">${meanFreqStr}</td>` +
       `<td class="use-cell">${mr ? `<button class="btn" onclick='applyCombo(${JSON.stringify(mr.breakpoints)})'>Apply</button>` : ''}</td>` +
       `<td style="text-align:left">${maxFreqStr}</td>` +
       `<td class="use-cell">${xr ? `<button class="btn" onclick='applyCombo(${JSON.stringify(xr.breakpoints)})'>Apply</button>` : ''}</td></tr>`;
-  });
+  }
   h += '</table>';
   document.getElementById('dpSweepTable').innerHTML = h;
 }
@@ -765,7 +823,9 @@ function loadDomain(name) {
   document.getElementById('targetK').max = n;
   document.getElementById('targetK').value = Math.min(5, n);
   document.getElementById('dpMaxK').max = n;
-  document.getElementById('dpMaxK').value = Math.min(12, n);
+  // default to the FULL point count so the sweep table shows the complete
+  // achievable-error curve out of the box, not just a capped preview.
+  document.getElementById('dpMaxK').value = n;
   // combo/DP tables hold frequency indices from the PREVIOUS domain - stale
   // and misleading (and their "Apply" buttons would apply the wrong
   // domain's indices), so clear them on every domain switch.
@@ -855,7 +915,8 @@ function recompute() {
 let searchBusy = false;
 function setSearchBusy(busy) {
   searchBusy = busy;
-  ['domainSelect', 'autoBtn', 'semiAutoBtn', 'detailsBtn', 'clearBtn', 'targetK', 'excludeFloor', 'dpRunBtn', 'dpMaxK'].forEach(id => {
+  ['domainSelect', 'autoBtn', 'semiAutoBtn', 'detailsBtn', 'clearBtn', 'targetK', 'excludeFloor', 'dpRunBtn', 'dpMaxK',
+   'rangeConstraintEnabled', 'rangeFrom', 'rangeTo', 'rangeMaxError'].forEach(id => {
     document.getElementById(id).disabled = busy;
   });
   document.getElementById('freqGrid').style.pointerEvents = busy ? 'none' : '';
