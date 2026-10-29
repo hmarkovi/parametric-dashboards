@@ -1,0 +1,751 @@
+#!/usr/bin/env python3
+"""Build a self-contained HTML VF-curve testing-point optimizer from a
+high-resolution Vmin-vs-Frequency sweep CSV (one row per Visual_ID x Core x
+Frequency_GHz, columns: Visual_ID, Test_Name, Frequency_GHz, Vmin_V,
+At_Sweep_Floor, optional Core).
+
+All interpolation / brute-force search / rendering logic lives in the
+generated HTML's inline JavaScript - this script only parses the CSV and
+embeds the data as JSON. Standard library only (csv, json, argparse).
+"""
+
+import argparse
+import csv
+import json
+import sys
+from pathlib import Path
+
+TRUE_STRINGS = {"true", "1", "yes"}
+
+
+def parse_bool(value):
+    return str(value).strip().lower() in TRUE_STRINGS
+
+
+def load_domains(csv_path):
+    """Group rows by Test_Name (domain). Each (Visual_ID, Core) pair is kept
+    as its own independent sample ("unit") - cores are NOT reduced/merged,
+    they're additional independent data points sharing the domain's
+    frequency axis (increases statistical assurance rather than acting as
+    separate domains). The optional Core column defaults to "" (single
+    implicit core) for CSVs that don't have per-core data."""
+
+    raw = {}  # domain -> {(visual_id, core) -> {freq -> (vmin, at_floor)}}
+    freqs_by_domain = {}  # domain -> set of frequencies seen
+    has_core_col = False
+
+    with open(csv_path, newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        required = {"Visual_ID", "Test_Name", "Frequency_GHz", "Vmin_V"}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"CSV is missing required column(s): {sorted(missing)}")
+        has_core_col = "Core" in (reader.fieldnames or [])
+
+        for row in reader:
+            domain = row["Test_Name"].strip()
+            vid = row["Visual_ID"].strip()
+            core = row["Core"].strip() if has_core_col else ""
+            try:
+                freq = float(row["Frequency_GHz"])
+                vmin = float(row["Vmin_V"])
+            except ValueError:
+                continue  # skip unparseable rows rather than aborting the whole build
+            at_floor = parse_bool(row.get("At_Sweep_Floor", ""))
+
+            raw.setdefault(domain, {}).setdefault((vid, core), {})[freq] = (vmin, at_floor)
+            freqs_by_domain.setdefault(domain, set()).add(freq)
+
+    domains = []
+    for domain, units in raw.items():
+        freqs = sorted(freqs_by_domain[domain])
+        unit_list = []
+        for (vid, core), by_freq in sorted(units.items()):
+            vmin_arr = []
+            at_floor_arr = []
+            complete = True
+            for f in freqs:
+                if f in by_freq:
+                    v, af = by_freq[f]
+                    vmin_arr.append(v)
+                    at_floor_arr.append(af)
+                else:
+                    vmin_arr.append(None)
+                    at_floor_arr.append(False)
+                    complete = False
+            sample_id = vid if core == "" else f"{vid}#C{core}"
+            unit_list.append({
+                "id": sample_id,
+                "visualId": vid,
+                "core": core,
+                "vmin": vmin_arr,
+                "atFloor": at_floor_arr,
+                "complete": complete,
+            })
+        domains.append({
+            "name": domain,
+            "frequencies": freqs,
+            "units": unit_list,
+        })
+
+    domains.sort(key=lambda d: d["name"])
+    return domains
+
+
+HTML_TEMPLATE = r"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>VF Curve Testing-Point Optimizer</title>
+<style>
+  :root { color-scheme: light; }
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; padding: 24px; background: #f5f6f8; color: #1f2430; }
+  h1 { font-size: 20px; margin: 0 0 4px 0; }
+  .subtitle { color: #5a6270; font-size: 13px; margin-bottom: 18px; }
+  .card { background: #fff; border: 1px solid #e0e3e8; border-radius: 8px; padding: 16px 18px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+  label { font-size: 13px; }
+  select, input[type=number] { font-size: 13px; padding: 3px 6px; }
+  .freq-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+  .freq-chip { border: 1px solid #c7cbd4; border-radius: 6px; padding: 5px 9px; font-size: 12px; cursor: pointer; user-select: none; background: #fafbfc; }
+  .freq-chip.selected { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .freq-chip.forced { background: #93a3b8; color: #fff; border-color: #93a3b8; cursor: not-allowed; }
+  .freq-chip input { display: none; }
+  .btn { border: 1px solid #c7cbd4; background: #fff; border-radius: 6px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+  .btn:hover { background: #f0f2f5; }
+  .btn.primary { background: #2563eb; color: #fff; border-color: #2563eb; }
+  .btn.primary:hover { background: #1d4ed8; }
+  table { border-collapse: collapse; font-size: 12px; width: 100%; }
+  th, td { border: 1px solid #e0e3e8; padding: 4px 8px; text-align: right; }
+  th { background: #f0f2f5; }
+  td:first-child, th:first-child { text-align: left; }
+  .stat-pill { display: inline-block; background: #eef1f6; border-radius: 6px; padding: 4px 10px; font-size: 12px; margin-right: 8px; }
+  .warn { color: #b45309; font-size: 12px; }
+  .muted { color: #6b7280; font-size: 12px; }
+  svg { background: #fff; }
+  .legend-item { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; margin-right: 14px; }
+  .legend-swatch { width: 12px; height: 12px; display: inline-block; border-radius: 2px; }
+  .combo-table td.use-cell { text-align: center; }
+  .snapshot { border-top: 1px dashed #c7cbd4; margin-top: 12px; padding-top: 12px; }
+</style>
+</head>
+<body>
+
+<h1>VF Curve Testing-Point Optimizer</h1>
+<div class="subtitle" id="subtitle"></div>
+
+<div class="card">
+  <div class="row">
+    <div>
+      <label for="domainSelect"><b>Domain / Test</b></label><br>
+      <select id="domainSelect"></select>
+    </div>
+    <div>
+      <label><b>Exclude sweep-floor-capped points from penalty stats</b></label><br>
+      <label><input type="checkbox" id="excludeFloor" checked> exclude (recommended - Actual is censored at the floor)</label>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <b>Select Points</b> - checked = &quot;testing&quot; point (penalty forced to 0). Endpoints are always forced on to avoid extrapolation.
+  <div class="freq-grid" id="freqGrid" style="margin-top:10px;"></div>
+  <div style="margin-top:12px;">
+    <button class="btn" id="clearBtn">Clear (endpoints only)</button>
+    <span class="muted">Currently selected: <span id="selectedCount"></span> of <span id="totalCount"></span> frequencies</span>
+  </div>
+</div>
+
+<div class="card">
+  <b>Auto-Search Testing Set</b>
+  <div class="row" style="margin-top:8px;">
+    <div>
+      <label for="targetK">Target number of testing points (K)</label><br>
+      <input type="number" id="targetK" min="2" value="5" style="width:70px;">
+    </div>
+    <div style="align-self:flex-end;">
+      <button class="btn primary" id="autoBtn">Auto (exhaustive search)</button>
+      <button class="btn" id="semiAutoBtn">Semi-Auto (greedy, fast)</button>
+      <button class="btn" id="detailsBtn">Details (snapshot current selection)</button>
+    </div>
+  </div>
+  <div class="warn" id="autoWarning" style="margin-top:6px;"></div>
+  <div class="row" style="margin-top:12px;">
+    <div style="flex:1; min-width:320px;">
+      <b>Top 10 by |General Mean Penalty| (smaller magnitude = better)</b>
+      <div id="topByMean"></div>
+    </div>
+    <div style="flex:1; min-width:320px;">
+      <b>Top 10 by |General Max Penalty| (smaller magnitude = better)</b>
+      <div id="topByMax"></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <b>Graph Builder</b>
+  <div class="muted" style="margin-bottom:6px;">Top: Actual vs Interpolated Vmin by frequency (full-range box whiskers). Bottom: Penalty by frequency.</div>
+  <div id="legendTop" style="margin-bottom:4px;"></div>
+  <svg id="chartTop" width="900" height="260"></svg>
+  <div id="legendBottom" style="margin:10px 0 4px 0;"></div>
+  <svg id="chartBottom" width="900" height="260"></svg>
+</div>
+
+<div class="card">
+  <b>Details</b>
+  <div id="generalStats" style="margin:8px 0;"></div>
+  <div id="freqStatsTable"></div>
+  <div id="snapshots"></div>
+</div>
+
+<script id="vf-data" type="application/json">__VF_DATA_JSON__</script>
+<script>
+const VF_DATA = JSON.parse(document.getElementById('vf-data').textContent);
+
+function fmt(x, d) {
+  if (x === null || x === undefined || Number.isNaN(x)) return '-';
+  return x.toFixed(d === undefined ? 4 : d);
+}
+
+function percentile(sorted, p) {
+  if (sorted.length === 0) return null;
+  if (sorted.length === 1) return sorted[0];
+  const idx = p / 100 * (sorted.length - 1);
+  const lo = Math.floor(idx), hi = Math.ceil(idx);
+  if (lo === hi) return sorted[lo];
+  const frac = idx - lo;
+  return sorted[lo] * (1 - frac) + sorted[hi] * frac;
+}
+
+function boxStats(values) {
+  const v = values.filter(x => x !== null && x !== undefined && !Number.isNaN(x)).slice().sort((a, b) => a - b);
+  if (v.length === 0) return null;
+  return {
+    n: v.length,
+    min: v[0],
+    q1: percentile(v, 25),
+    median: percentile(v, 50),
+    q3: percentile(v, 75),
+    max: v[v.length - 1],
+    mean: v.reduce((a, b) => a + b, 0) / v.length,
+  };
+}
+
+// ---- Interpolation / penalty core ----
+
+// Bracket (lo,hi) only depends on the selection and the frequency index,
+// not on any unit's values - precompute once per selection instead of
+// rescanning the selected set for every (unit, frequency) cell.
+function computeBrackets(freqs, selectedIdx) {
+  const n = freqs.length;
+  const sorted = Array.from(selectedIdx).sort((a, b) => a - b);
+  const brackets = new Array(n).fill(null);
+  for (let i = 0; i < n; i++) {
+    if (selectedIdx.has(i)) continue;
+    let lo = -1, hi = -1;
+    for (const s of sorted) {
+      if (s < i) lo = s;
+      if (s > i && hi === -1) hi = s;
+    }
+    brackets[i] = [lo, hi];
+  }
+  return brackets;
+}
+
+function computePenaltyMatrix(domain, selectedIdx) {
+  const n = domain.frequencies.length;
+  const freqs = domain.frequencies;
+  const brackets = computeBrackets(freqs, selectedIdx);
+  return domain.units.map(u => {
+    const interp = new Array(n);
+    const penalty = new Array(n);
+    for (let i = 0; i < n; i++) {
+      if (u.vmin[i] === null) { interp[i] = null; penalty[i] = null; continue; }
+      if (selectedIdx.has(i)) { interp[i] = u.vmin[i]; penalty[i] = 0; continue; }
+      const [lo, hi] = brackets[i];
+      if (lo === -1 || hi === -1 || u.vmin[lo] === null || u.vmin[hi] === null) { interp[i] = null; penalty[i] = null; continue; }
+      const frac = (freqs[i] - freqs[lo]) / (freqs[hi] - freqs[lo]);
+      const it = u.vmin[lo] + frac * (u.vmin[hi] - u.vmin[lo]);
+      interp[i] = it;
+      penalty[i] = it - u.vmin[i];
+    }
+    return { id: u.id, interp, penalty, atFloor: u.atFloor, vmin: u.vmin };
+  });
+}
+
+function freqPenaltyStats(unitResults, domain, excludeFloor) {
+  const n = domain.frequencies.length;
+  const stats = [];
+  for (let i = 0; i < n; i++) {
+    const vals = [];
+    for (const u of unitResults) {
+      if (u.penalty[i] === null) continue;
+      if (excludeFloor && u.atFloor[i]) continue;
+      vals.push(u.penalty[i]);
+    }
+    stats.push(boxStats(vals));
+  }
+  return stats;
+}
+
+function generalStats(freqStats) {
+  const means = freqStats.filter(s => s !== null).map(s => s.mean);
+  if (means.length === 0) return { generalMean: null, generalMax: null };
+  return {
+    generalMean: means.reduce((a, b) => a + b, 0) / means.length,
+    generalMax: Math.max(...means),
+  };
+}
+
+// ---- Combination search ----
+
+function combinations(arr, k) {
+  const results = [];
+  const combo = [];
+  function rec(start) {
+    if (combo.length === k) { results.push(combo.slice()); return; }
+    for (let i = start; i < arr.length; i++) {
+      combo.push(arr[i]);
+      rec(i + 1);
+      combo.pop();
+    }
+  }
+  rec(0);
+  return results;
+}
+
+function nChooseK(n, k) {
+  if (k < 0 || k > n) return 0;
+  k = Math.min(k, n - k);
+  let r = 1;
+  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+  return Math.round(r);
+}
+
+const EXHAUSTIVE_CAP = 50000;
+// Combo count alone isn't a good proxy for runtime once sample counts get
+// large (per-core datasets can have 500-800 samples) - bound the estimated
+// total work (combos x samples) too, and run in yielding chunks either way
+// so the tab never looks frozen.
+const MAX_EXHAUSTIVE_WORK = 20000000;
+const SEARCH_CHUNK_SIZE = 150;
+
+function yieldToUI() {
+  return new Promise(resolve => setTimeout(resolve, 0));
+}
+
+function evalCombo(domain, interiorCombo, excludeFloor) {
+  const n = domain.frequencies.length;
+  const selected = new Set(interiorCombo);
+  selected.add(0);
+  selected.add(n - 1);
+  const unitResults = computePenaltyMatrix(domain, selected);
+  const fStats = freqPenaltyStats(unitResults, domain, excludeFloor);
+  const g = generalStats(fStats);
+  return { combo: Array.from(selected).sort((a, b) => a - b), generalMean: g.generalMean, generalMax: g.generalMax };
+}
+
+async function autoSearchExhaustiveAsync(domain, k, excludeFloor, progressEl) {
+  const n = domain.frequencies.length;
+  const interior = [];
+  for (let i = 1; i < n - 1; i++) interior.push(i);
+  const kInterior = k - 2;
+  const allCombos = combinations(interior, kInterior);
+  const results = [];
+  for (let idx = 0; idx < allCombos.length; idx++) {
+    results.push(evalCombo(domain, allCombos[idx], excludeFloor));
+    if (idx % SEARCH_CHUNK_SIZE === 0) {
+      progressEl.textContent = `Computing exhaustive search... ${idx}/${allCombos.length} combinations`;
+      await yieldToUI();
+    }
+  }
+  return results;
+}
+
+async function autoSearchGreedyAsync(domain, k, excludeFloor, progressEl) {
+  const n = domain.frequencies.length;
+  let selected = new Set([0, n - 1]);
+  while (selected.size < k) {
+    let best = null, bestScore = Infinity;
+    progressEl.textContent = `Computing greedy search... ${selected.size}/${k} points chosen`;
+    for (let i = 0; i < n; i++) {
+      if (selected.has(i)) continue;
+      const trial = new Set(selected); trial.add(i);
+      const unitResults = computePenaltyMatrix(domain, trial);
+      const fStats = freqPenaltyStats(unitResults, domain, excludeFloor);
+      const g = generalStats(fStats);
+      const score = g.generalMean === null ? null : Math.abs(g.generalMean);
+      if (score !== null && score < bestScore) { bestScore = score; best = i; }
+    }
+    if (best === null) break;
+    selected.add(best);
+    await yieldToUI();
+  }
+  const unitResults = computePenaltyMatrix(domain, selected);
+  const fStats = freqPenaltyStats(unitResults, domain, excludeFloor);
+  const g = generalStats(fStats);
+  return { combo: Array.from(selected).sort((a, b) => a - b), generalMean: g.generalMean, generalMax: g.generalMax };
+}
+
+// ---- Rendering ----
+
+function renderComboTable(container, results, sortKey, domain) {
+  // Rank by magnitude (not raw signed value) - a large negative penalty (interpolation
+  // underestimates true Vmin) is just as bad as a large positive one, not "better".
+  const top = results.slice().sort((a, b) => Math.abs(a[sortKey]) - Math.abs(b[sortKey])).slice(0, 10);
+  let h = '<table class="combo-table"><tr><th>#</th><th>Frequencies (GHz)</th><th>General Mean</th><th>General Max</th><th>Use</th></tr>';
+  top.forEach((r, i) => {
+    const freqStr = r.combo.map(idx => domain.frequencies[idx]).join(', ');
+    h += `<tr><td>${i + 1}</td><td style="text-align:left">${freqStr}</td><td>${fmt(r.generalMean)}</td><td>${fmt(r.generalMax)}</td>` +
+      `<td class="use-cell"><button class="btn" onclick='applyCombo(${JSON.stringify(r.combo)})'>Apply</button></td></tr>`;
+  });
+  h += '</table>';
+  container.innerHTML = h;
+}
+
+function drawBoxChart(svgEl, freqs, series, options) {
+  const svg = svgEl;
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  const W = +svg.getAttribute('width'), H = +svg.getAttribute('height');
+  const padL = 55, padR = 20, padT = 15, padB = 35;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+
+  let allVals = [];
+  series.forEach(s => s.stats.forEach(st => { if (st) allVals.push(st.min, st.max); }));
+  options.extraLines && options.extraLines.forEach(l => l.values.forEach(v => { if (v !== null) allVals.push(v); }));
+  if (allVals.length === 0) allVals = [0, 1];
+  let yMin = Math.min(...allVals), yMax = Math.max(...allVals);
+  if (yMin === yMax) { yMin -= 0.1; yMax += 0.1; }
+  const pad = (yMax - yMin) * 0.08;
+  yMin -= pad; yMax += pad;
+
+  function ns(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+  function yPix(v) { return padT + plotH - (v - yMin) / (yMax - yMin) * plotH; }
+  function xCluster(i) { return padL + (i + 0.5) / freqs.length * plotW; }
+
+  // axes
+  const axis = ns('g');
+  const yAxisLine = ns('line');
+  yAxisLine.setAttribute('x1', padL); yAxisLine.setAttribute('x2', padL);
+  yAxisLine.setAttribute('y1', padT); yAxisLine.setAttribute('y2', padT + plotH);
+  yAxisLine.setAttribute('stroke', '#999');
+  axis.appendChild(yAxisLine);
+  const xAxisLine = ns('line');
+  xAxisLine.setAttribute('x1', padL); xAxisLine.setAttribute('x2', padL + plotW);
+  xAxisLine.setAttribute('y1', padT + plotH); xAxisLine.setAttribute('y2', padT + plotH);
+  xAxisLine.setAttribute('stroke', '#999');
+  axis.appendChild(xAxisLine);
+  for (let t = 0; t <= 4; t++) {
+    const v = yMin + t / 4 * (yMax - yMin);
+    const txt = ns('text');
+    txt.setAttribute('x', padL - 6); txt.setAttribute('y', yPix(v) + 3);
+    txt.setAttribute('text-anchor', 'end'); txt.setAttribute('font-size', '10');
+    txt.textContent = v.toFixed(3);
+    axis.appendChild(txt);
+  }
+  freqs.forEach((f, i) => {
+    const txt = ns('text');
+    txt.setAttribute('x', xCluster(i)); txt.setAttribute('y', padT + plotH + 14);
+    txt.setAttribute('text-anchor', 'middle'); txt.setAttribute('font-size', '10');
+    txt.textContent = f;
+    axis.appendChild(txt);
+  });
+  svg.appendChild(axis);
+
+  const nSeries = series.length;
+  const clusterW = plotW / freqs.length;
+  const boxW = Math.min(18, clusterW / (nSeries + 1));
+
+  series.forEach((s, si) => {
+    const offset = (si - (nSeries - 1) / 2) * (boxW + 4);
+    const g = ns('g');
+    const meanPts = [];
+    s.stats.forEach((st, i) => {
+      const cx = xCluster(i) + offset;
+      if (!st) return;
+      // whisker
+      const wl = ns('line');
+      wl.setAttribute('x1', cx); wl.setAttribute('x2', cx);
+      wl.setAttribute('y1', yPix(st.min)); wl.setAttribute('y2', yPix(st.max));
+      wl.setAttribute('stroke', s.color); wl.setAttribute('stroke-width', '1');
+      g.appendChild(wl);
+      // box
+      const rect = ns('rect');
+      rect.setAttribute('x', cx - boxW / 2);
+      rect.setAttribute('y', yPix(st.q3));
+      rect.setAttribute('width', boxW);
+      rect.setAttribute('height', Math.max(1, yPix(st.q1) - yPix(st.q3)));
+      rect.setAttribute('fill', s.color); rect.setAttribute('fill-opacity', '0.35');
+      rect.setAttribute('stroke', s.color);
+      g.appendChild(rect);
+      // median
+      const ml = ns('line');
+      ml.setAttribute('x1', cx - boxW / 2); ml.setAttribute('x2', cx + boxW / 2);
+      ml.setAttribute('y1', yPix(st.median)); ml.setAttribute('y2', yPix(st.median));
+      ml.setAttribute('stroke', s.color); ml.setAttribute('stroke-width', '2');
+      g.appendChild(ml);
+      meanPts.push([cx, yPix(st.mean)]);
+    });
+    if (meanPts.length > 1) {
+      const poly = ns('polyline');
+      poly.setAttribute('points', meanPts.map(p => p.join(',')).join(' '));
+      poly.setAttribute('fill', 'none'); poly.setAttribute('stroke', s.color);
+      poly.setAttribute('stroke-width', '1.5'); poly.setAttribute('stroke-dasharray', '4,2');
+      g.appendChild(poly);
+    }
+    svg.appendChild(g);
+  });
+
+  (options.extraLines || []).forEach(l => {
+    const pts = [];
+    l.values.forEach((v, i) => { if (v !== null) pts.push([xCluster(i), yPix(v)]); });
+    if (pts.length > 1) {
+      const poly = ns('polyline');
+      poly.setAttribute('points', pts.map(p => p.join(',')).join(' '));
+      poly.setAttribute('fill', 'none'); poly.setAttribute('stroke', l.color);
+      poly.setAttribute('stroke-width', '2');
+      svg.appendChild(poly);
+    }
+  });
+}
+
+function legendHtml(items) {
+  return items.map(it => `<span class="legend-item"><span class="legend-swatch" style="background:${it.color}"></span>${it.label}</span>`).join('');
+}
+
+// ---- App state ----
+
+let currentDomain = null;
+let selectedIdx = new Set();
+let snapshotCount = 0;
+
+function domainByName(name) { return VF_DATA.domains.find(d => d.name === name); }
+
+function initDomainSelect() {
+  const sel = document.getElementById('domainSelect');
+  VF_DATA.domains.forEach(d => {
+    const o = document.createElement('option');
+    o.value = d.name; o.textContent = `${d.name} (${d.units.length} units, ${d.frequencies.length} freqs)`;
+    sel.appendChild(o);
+  });
+  sel.addEventListener('change', () => loadDomain(sel.value));
+  loadDomain(VF_DATA.domains[0].name);
+}
+
+function loadDomain(name) {
+  currentDomain = domainByName(name);
+  const n = currentDomain.frequencies.length;
+  selectedIdx = new Set([0, n - 1]);
+  renderFreqGrid();
+  document.getElementById('targetK').max = n;
+  document.getElementById('targetK').value = Math.min(5, n);
+  // combo tables hold frequency indices from the PREVIOUS domain - stale and
+  // misleading (and their "Apply" buttons would apply the wrong domain's
+  // indices), so clear them on every domain switch.
+  document.getElementById('topByMean').innerHTML = '';
+  document.getElementById('topByMax').innerHTML = '';
+  document.getElementById('autoWarning').textContent = '';
+  recompute();
+}
+
+function renderFreqGrid() {
+  const grid = document.getElementById('freqGrid');
+  grid.innerHTML = '';
+  currentDomain.frequencies.forEach((f, i) => {
+    const forced = (i === 0 || i === currentDomain.frequencies.length - 1);
+    const chip = document.createElement('label');
+    chip.className = 'freq-chip' + (selectedIdx.has(i) ? ' selected' : '') + (forced ? ' forced' : '');
+    chip.innerHTML = `<input type="checkbox" ${selectedIdx.has(i) ? 'checked' : ''} ${forced ? 'disabled' : ''}> ${f} GHz`;
+    if (!forced) {
+      chip.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (selectedIdx.has(i)) selectedIdx.delete(i); else selectedIdx.add(i);
+        renderFreqGrid();
+        recompute();
+      });
+    }
+    grid.appendChild(chip);
+  });
+  document.getElementById('selectedCount').textContent = selectedIdx.size;
+  document.getElementById('totalCount').textContent = currentDomain.frequencies.length;
+}
+
+function applyCombo(combo) {
+  selectedIdx = new Set(combo);
+  renderFreqGrid();
+  recompute();
+  window.scrollTo({ top: document.getElementById('freqGrid').offsetTop - 80, behavior: 'smooth' });
+}
+
+function recompute() {
+  const excludeFloor = document.getElementById('excludeFloor').checked;
+  const unitResults = computePenaltyMatrix(currentDomain, selectedIdx);
+  const fStats = freqPenaltyStats(unitResults, currentDomain, excludeFloor);
+  const g = generalStats(fStats);
+
+  // top chart: actual vs interpolated vmin
+  const actualStats = currentDomain.frequencies.map((f, i) => boxStats(unitResults.map(u => u.vmin[i])));
+  const interpStats = currentDomain.frequencies.map((f, i) => boxStats(unitResults.map(u => u.interp[i])));
+  document.getElementById('legendTop').innerHTML = legendHtml([
+    { color: '#2563eb', label: 'Actual Vmin' },
+    { color: '#f59e0b', label: 'Interpolated Vmin' },
+  ]);
+  drawBoxChart(document.getElementById('chartTop'), currentDomain.frequencies, [
+    { stats: actualStats, color: '#2563eb' },
+    { stats: interpStats, color: '#f59e0b' },
+  ], {});
+
+  // bottom chart: penalty
+  const maxPenaltyLine = fStats.map(s => s ? s.max : null);
+  document.getElementById('legendBottom').innerHTML = legendHtml([
+    { color: '#16a34a', label: 'Penalty (box + mean)' },
+    { color: '#7c3aed', label: 'Max Penalty (line)' },
+  ]);
+  drawBoxChart(document.getElementById('chartBottom'), currentDomain.frequencies, [
+    { stats: fStats, color: '#16a34a' },
+  ], { extraLines: [{ values: maxPenaltyLine, color: '#7c3aed' }] });
+
+  document.getElementById('generalStats').innerHTML =
+    `<span class="stat-pill">General Mean(Mean_Penalty_by_Freq): ${fmt(g.generalMean)}</span>` +
+    `<span class="stat-pill">General Max(Mean_Penalty_by_Freq): ${fmt(g.generalMax)}</span>`;
+
+  let th = '<table><tr><th>Frequency (GHz)</th><th>N</th><th>Mean</th><th>Min</th><th>2.5%</th><th>25%</th><th>Median</th><th>75%</th><th>97.5%</th><th>Max</th></tr>';
+  currentDomain.frequencies.forEach((f, i) => {
+    const s = fStats[i];
+    const vals = unitResults.map(u => u.penalty[i]).filter(v => v !== null);
+    const sorted = vals.slice().sort((a, b) => a - b);
+    th += `<tr><td>${f}${selectedIdx.has(i) ? ' (testing)' : ''}</td><td>${s ? s.n : 0}</td><td>${fmt(s && s.mean)}</td>` +
+      `<td>${fmt(s && s.min)}</td><td>${fmt(percentile(sorted, 2.5))}</td><td>${fmt(percentile(sorted, 25))}</td>` +
+      `<td>${fmt(s && s.median)}</td><td>${fmt(percentile(sorted, 75))}</td><td>${fmt(percentile(sorted, 97.5))}</td><td>${fmt(s && s.max)}</td></tr>`;
+  });
+  th += '</table>';
+  document.getElementById('freqStatsTable').innerHTML = th;
+}
+
+let searchBusy = false;
+function setSearchBusy(busy) {
+  searchBusy = busy;
+  ['domainSelect', 'autoBtn', 'semiAutoBtn', 'detailsBtn', 'clearBtn', 'targetK', 'excludeFloor'].forEach(id => {
+    document.getElementById(id).disabled = busy;
+  });
+  document.getElementById('freqGrid').style.pointerEvents = busy ? 'none' : '';
+  document.getElementById('freqGrid').style.opacity = busy ? '0.6' : '';
+}
+
+async function runAuto(mode) {
+  if (searchBusy) return;
+  const excludeFloor = document.getElementById('excludeFloor').checked;
+  const k = parseInt(document.getElementById('targetK').value, 10);
+  const n = currentDomain.frequencies.length;
+  const warnEl = document.getElementById('autoWarning');
+  warnEl.textContent = '';
+  if (k < 2 || k > n) { warnEl.textContent = `K must be between 2 and ${n}.`; return; }
+
+  const combosCount = nChooseK(n - 2, k - 2);
+  const sampleCount = currentDomain.units.length;
+  const estimatedWork = combosCount * sampleCount;
+
+  setSearchBusy(true);
+  try {
+    let results;
+    let fallbackNotice = '';
+    if (mode === 'auto') {
+      if (combosCount > EXHAUSTIVE_CAP || estimatedWork > MAX_EXHAUSTIVE_WORK) {
+        fallbackNotice = `Exhaustive search would evaluate ${combosCount} combinations x ${sampleCount} samples (too large) - ran Semi-Auto (greedy) instead.`;
+        warnEl.textContent = fallbackNotice;
+        await yieldToUI();
+        results = [await autoSearchGreedyAsync(currentDomain, k, excludeFloor, warnEl)];
+      } else {
+        results = await autoSearchExhaustiveAsync(currentDomain, k, excludeFloor, warnEl);
+      }
+    } else {
+      results = [await autoSearchGreedyAsync(currentDomain, k, excludeFloor, warnEl)];
+    }
+    warnEl.textContent = fallbackNotice;
+    renderComboTable(document.getElementById('topByMean'), results, 'generalMean', currentDomain);
+    renderComboTable(document.getElementById('topByMax'), results, 'generalMax', currentDomain);
+  } finally {
+    setSearchBusy(false);
+  }
+}
+
+function takeSnapshot() {
+  const excludeFloor = document.getElementById('excludeFloor').checked;
+  const unitResults = computePenaltyMatrix(currentDomain, selectedIdx);
+  const fStats = freqPenaltyStats(unitResults, currentDomain, excludeFloor);
+  const g = generalStats(fStats);
+  snapshotCount++;
+  const freqList = Array.from(selectedIdx).sort((a, b) => a - b).map(i => currentDomain.frequencies[i]);
+  const name = freqList.join('_');
+  const div = document.createElement('div');
+  div.className = 'snapshot';
+  div.innerHTML = `<b>Snapshot ${snapshotCount}: ${name}</b><br>` +
+    `<span class="stat-pill">Selected: ${freqList.join(', ')} GHz</span>` +
+    `<span class="stat-pill">General Mean: ${fmt(g.generalMean)}</span>` +
+    `<span class="stat-pill">General Max: ${fmt(g.generalMax)}</span>`;
+  document.getElementById('snapshots').prepend(div);
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('subtitle').textContent =
+    `Source: ${VF_DATA.sourceCsv || 'n/a'} - generated ${VF_DATA.generatedAt || ''}`;
+  initDomainSelect();
+  document.getElementById('excludeFloor').addEventListener('change', recompute);
+  document.getElementById('clearBtn').addEventListener('click', () => {
+    const n = currentDomain.frequencies.length;
+    selectedIdx = new Set([0, n - 1]);
+    renderFreqGrid();
+    recompute();
+  });
+  document.getElementById('autoBtn').addEventListener('click', () => runAuto('auto'));
+  document.getElementById('semiAutoBtn').addEventListener('click', () => runAuto('semi'));
+  document.getElementById('detailsBtn').addEventListener('click', takeSnapshot);
+});
+</script>
+</body>
+</html>
+"""
+
+
+def build_html(domains, source_csv_name):
+    from datetime import datetime, timezone
+
+    data = {
+        "domains": domains,
+        "sourceCsv": source_csv_name,
+        "generatedAt": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    return HTML_TEMPLATE.replace("__VF_DATA_JSON__", json.dumps(data))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("csv_path", help="Path to the high-resolution Vmin sweep CSV")
+    parser.add_argument("-o", "--output", help="Output HTML path (default: <csv>_vf_curve_optimizer.html next to the CSV)")
+    args = parser.parse_args()
+
+    csv_path = Path(args.csv_path)
+    if not csv_path.exists():
+        print(f"ERROR: CSV not found: {csv_path}", file=sys.stderr)
+        sys.exit(1)
+
+    domains = load_domains(csv_path)
+    if not domains:
+        print("ERROR: no usable rows found in CSV", file=sys.stderr)
+        sys.exit(1)
+
+    out_path = Path(args.output) if args.output else csv_path.with_name(csv_path.stem + "_vf_curve_optimizer.html")
+    html_out = build_html(domains, csv_path.name)
+    out_path.write_text(html_out, encoding="utf-8")
+
+    print(f"Wrote {out_path}")
+    for d in domains:
+        n_incomplete = sum(1 for u in d["units"] if not u["complete"])
+        n_cores = len({u["core"] for u in d["units"]})
+        sample_label = "unit-core samples" if n_cores > 1 else "units"
+        print(f"  domain '{d['name']}': {len(d['units'])} {sample_label}, {len(d['frequencies'])} frequencies"
+              + (f" ({n_incomplete} missing some frequencies)" if n_incomplete else ""))
+
+
+if __name__ == "__main__":
+    main()
