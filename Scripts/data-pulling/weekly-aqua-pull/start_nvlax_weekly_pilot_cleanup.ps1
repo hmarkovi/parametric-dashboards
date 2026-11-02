@@ -9,7 +9,9 @@ param(
     [string]$ManifestFolderName = "pilot_cleanup_manifests",
     [switch]$DeleteOriginals,
     [switch]$SkipValidation,
-    [string]$PythonExe = ""
+    [string]$PythonExe = "",
+    [switch]$UpdateParquetStore,
+    [int]$ParquetMaxUnits = 15000
 )
 
 Set-StrictMode -Version Latest
@@ -35,3 +37,14 @@ Write-Host "WorkWeeks: $($WorkWeeks -join ', ')"
     -DeleteOriginals:$DeleteOriginals `
     -SkipValidation:$SkipValidation `
     -PythonExe $PythonExe
+
+if ($UpdateParquetStore) {
+    # Post-organization step (opt-in): ingest per-TP CSVs into the Parquet store, report retention (no deletion), build the single HTML.
+    $py = if ($PythonExe) { $PythonExe } else { "python" }
+    $storeScript = Join-Path $scriptDir "..\..\parametric-analysis\parametric-tabs\weekly_parquet_store.py"
+    $csvDir = Join-Path $WeeklyRunsDir $RetainedFolderName
+    $store = Join-Path $WeeklyRunsDir "Parquet_store"
+    Write-Host "Updating Parquet store: $store" -ForegroundColor Cyan
+    & $py $storeScript run --csv-dir $csvDir --store $store --max-units $ParquetMaxUnits
+    if ($LASTEXITCODE -ne 0) { throw "Parquet store update failed (exit $LASTEXITCODE)" }
+}

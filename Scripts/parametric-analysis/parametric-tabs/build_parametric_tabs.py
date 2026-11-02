@@ -16,6 +16,7 @@ import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 import pandas as pd
@@ -106,6 +107,9 @@ POSTSI_TO_PRESI = {
 # Domains that are not analysed (SADPU is the relevant domain for Vmin, SICC and DTS).
 EXCLUDED_DOMAINS = {"SAVPU"}
 
+DEFAULT_MAX_UNITS = 15000  # per-unit points embedded in the page (about 2.4 KB per unit); beyond this a fair-share sample is plotted
+PARQUET_PART_GLOB = "parquet/TP=*/data.parquet"  # layout written by weekly_parquet_store.py
+
 MIN_FIT_POINTS = 5
 WEAK_R2 = 0.10
 VMIN_VALID = (0.2, 1.8)
@@ -130,6 +134,74 @@ def first_existing(candidates: list[str], columns: set[str]) -> str | None:
         if item in columns:
             return item
     return None
+
+
+def parquet_parts(root: Path) -> list[Path]:
+    parts = sorted(root.glob(PARQUET_PART_GLOB))
+    if not parts:
+        raise SystemExit(f"No Parquet partitions ({PARQUET_PART_GLOB}) under {root}")
+    return parts
+
+
+def parquet_header(parts: list[Path]) -> list[str]:
+    import pyarrow.parquet as pq
+    header: dict[str, None] = {}
+    for p in parts:
+        for name in pq.read_schema(p).names:
+            header.setdefault(name, None)
+    return list(header)
+
+
+def load_parquet(parts: list[Path], usecols: set[str]) -> pd.DataFrame:
+    """Read only the report columns of every TP partition; a column missing in a partition is empty there."""
+    import pyarrow.parquet as pq
+    frames = []
+    for p in parts:
+        cols = [c for c in pq.read_schema(p).names if c in usecols]
+        frames.append(pq.read_table(p, columns=cols).to_pandas())
+    return pd.concat(frames, ignore_index=True) if len(frames) > 1 else frames[0]
+
+
+def parquet_manifest_unmapped(root: Path, current: list[dict]) -> list[dict]:
+    """Unmapped-token entries recorded at ingest time (they describe columns that are not stored in the Parquet)."""
+    path = root / "manifest.json"
+    if not path.exists():
+        return []
+    have = {(u["family"], u["token"]) for u in current}
+    best: dict[tuple, dict] = {}
+    for tp in json.loads(path.read_text(encoding="utf-8")).get("tps", {}).values():
+        for u in tp.get("unmapped", []):
+            key = (u["family"], u["token"])
+            if key not in have and (key not in best or u.get("count", 0) > best[key].get("count", 0)):
+                best[key] = u
+    return list(best.values())
+
+
+def fair_share_quota(counts: dict[str, int], cap: int) -> dict[str, int]:
+    """Water-filling: small programs keep every unit, the remaining budget is split evenly over the larger ones."""
+    quota, remaining = {}, cap
+    ordered = sorted(counts, key=lambda k: (counts[k], k))
+    for i, name in enumerate(ordered):
+        quota[name] = min(counts[name], remaining // (len(ordered) - i))
+        remaining -= quota[name]
+    return quota
+
+
+def sample_mask(df: pd.DataFrame, vid_col: str, lot_col: str | None, prog_col: str, quota: dict[str, int]) -> np.ndarray:
+    """Deterministic sample: within a program the units with the lowest hash of VisualID|lot are kept (stable between runs)."""
+    key = df[vid_col].astype(str)
+    if lot_col:
+        key = key + "|" + df[lot_col].astype(str)
+    h = pd.util.hash_pandas_object(key, index=False).to_numpy()
+    keep = np.zeros(len(df), dtype=bool)
+    prog = df[prog_col].to_numpy()
+    for name, q in quota.items():
+        idx = np.where(prog == name)[0]
+        if len(idx) <= q:
+            keep[idx] = True
+        else:
+            keep[idx[np.argsort(h[idx], kind="stable")[:q]]] = True
+    return keep
 
 
 def sicc_family(token: str) -> str:
@@ -295,31 +367,41 @@ def resolve_upm(pu: str, header: set[str]):
     return None, note
 
 
-def main() -> int:
+def parse_args_and_paths():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--input-csv", default="", help="Merged weekly CSV. Default: latest Vmin_YYYYMMDD.csv in the weekly folder.")
-    ap.add_argument("--output-dir", default="", help="Default: <input stem>_parametric_tabs next to the CSV.")
+    ap.add_argument("--input-parquet", default="", help="Parquet store root (see weekly_parquet_store.py); all TPs in the store are reported. Overrides --input-csv.")
+    ap.add_argument("--max-units", type=int, default=DEFAULT_MAX_UNITS,
+                    help="Cap on units embedded in the page for the per-unit plots/fits (fair share per program, deterministic sample). "
+                         "Overview counts, flow matrix and limiter tabs always use every unit. 0 = no cap.")
+    ap.add_argument("--output-dir", default="", help="Default: <input stem>_parametric_tabs next to the CSV (Parquet: <store>/reports/...).")
     ap.add_argument("--program", default="", help="Optional exact program name filter (validation).")
     ap.add_argument("--official-tps", default="", help="Comma list of extra official TP tokens, e.g. 25G00,25H00.")
     args = ap.parse_args()
 
     OFFICIAL_TP_TOKENS.update(t.strip().upper() for t in args.official_tps.split(",") if t.strip())
 
-    if args.input_csv:
+    if args.input_parquet:
+        input_csv = Path(args.input_parquet) / f"Vmin_ALL_{dt.date.today():%Y%m%d}"  # label only; no such file
+        default_out = Path(args.input_parquet) / "reports" / f"{input_csv.name}_parametric_tabs"
+    elif args.input_csv:
         input_csv = Path(args.input_csv)
+        default_out = input_csv.parent / f"{input_csv.stem}_parametric_tabs"
     else:
         found = sorted(WEEKLY_DIR.glob("Vmin_[0-9]" * 1 + "*.csv"))
         found = [p for p in found if re.fullmatch(r"Vmin_\d{8}\.csv", p.name)]
         if not found:
             raise SystemExit(f"No Vmin_YYYYMMDD.csv found in {WEEKLY_DIR}")
         input_csv = found[-1]
-    out_dir = Path(args.output_dir) if args.output_dir else input_csv.parent / f"{input_csv.stem}_parametric_tabs"
+        default_out = input_csv.parent / f"{input_csv.stem}_parametric_tabs"
+    out_dir = Path(args.output_dir) if args.output_dir else default_out
     out_dir.mkdir(parents=True, exist_ok=True)
+    return args, input_csv, out_dir
 
-    dts_helpers = load_dts_helpers()
 
-    # ------------------------------------------------------------------ discovery
-    header = read_header(input_csv)
+def discover(header: list[str]) -> SimpleNamespace:
+    """Parse the column names: which columns are charted, UPM resolution, unmapped tokens, and the minimal column set (`usecols`)
+    the report needs.  Shared with the Parquet ingest so the stored columns always match what the report reads."""
     hset = set(header)
     prog_col = first_existing(PROGRAM_COL_CANDIDATES, hset)
     vid_col = first_existing(VID_COL_CANDIDATES, hset)
@@ -451,7 +533,30 @@ def main() -> int:
             sib = c.replace("_MaxDTS_C", suffix)
             if sib in hset:
                 usecols.add(sib)
-    df = pd.read_csv(input_csv, usecols=sorted(usecols), low_memory=False)
+    return SimpleNamespace(**locals())
+
+
+def main() -> int:
+    args, input_csv, out_dir = parse_args_and_paths()
+    dts_helpers = load_dts_helpers()
+    use_parquet = bool(args.input_parquet)
+
+    # ------------------------------------------------------------------ discovery + load
+    if use_parquet:
+        pq_parts = parquet_parts(Path(args.input_parquet))
+        header = parquet_header(pq_parts)
+    else:
+        header = read_header(input_csv)
+    d = discover(header)
+    hset, prog_col, vid_col, lot_col, bin_col = d.hset, d.prog_col, d.vid_col, d.lot_col, d.bin_col
+    unmapped, vmin_cols, ilas_cols, dts_cols = d.unmapped, d.vmin_cols, d.ilas_cols, d.dts_cols
+    sicc_atref, sicc_raw, upm_info, upm_status = d.sicc_atref, d.sicc_raw, d.upm_info, d.upm_status
+    if use_parquet:
+        df = load_parquet(pq_parts, d.usecols)
+        unmapped.extend(parquet_manifest_unmapped(Path(args.input_parquet), unmapped))
+    else:
+        text_cols = {c: str for c in d.usecols if c.endswith(("_Setter", "_LP"))}  # keep leading zeros of LP / setter tokens
+        df = pd.read_csv(input_csv, usecols=sorted(d.usecols), dtype=text_cols, low_memory=False)
     total_rows = len(df)
     df[prog_col] = df[prog_col].fillna("").astype(str).str.strip()
     df = df[(df[prog_col] != "") & (df[prog_col].str.lower() != "nan")]
@@ -485,6 +590,23 @@ def main() -> int:
         keep = ok & (x >= lo) & (x <= hi)
         upm_series[pu] = {"x": np.where(keep, x, np.nan), "col": rule["col"], "target": rule["target"],
                           "lo": lo, "hi": hi, "excluded": int(ok.sum() - keep.sum()), "valid": int(ok.sum())}
+
+    # Per-unit plots / fits use a deterministic fair-share sample when the population exceeds --max-units;
+    # unit counts, flow matrix and limiter analysis below are always computed on every unit.
+    for p in programs:
+        p["shown"] = p["units"]
+    full_state = None
+    if args.max_units and n > args.max_units:
+        quota = fair_share_quota({p["name"]: p["units"] for p in programs}, args.max_units)
+        keep_rows = sample_mask(df, vid_col, lot_col, prog_col, quota)
+        full_state = (df, n, prog_of_row)
+        df = df[keep_rows].reset_index(drop=True)
+        n = len(df)
+        prog_of_row = prog_of_row[keep_rows]
+        for up in upm_series.values():
+            up["x"] = up["x"][keep_rows]
+        for i, p in enumerate(programs):
+            p["shown"] = int((prog_of_row == i).sum())
 
     # ------------------------------------------------------------------ Vmin
     dom_display = {}
@@ -784,10 +906,17 @@ def main() -> int:
 
     # ------------------------------------------------------------------ limiter analysis (ILAS) + overview
     # Good unit = interface bin 1 (PAS default).  Without a bin column all rows count.
-    if bin_col:
-        good = np.nan_to_num(finite(df[bin_col]), nan=-1) == 1
-    else:
-        good = np.ones(n, dtype=bool)
+    s_df, s_n, s_prog = df, n, prog_of_row  # the (possibly sampled) view used for per-unit points
+    if full_state:
+        df, n, prog_of_row = full_state
+
+    def good_units(frame: pd.DataFrame) -> np.ndarray:
+        if bin_col:
+            return np.nan_to_num(finite(frame[bin_col]), nan=-1) == 1
+        return np.ones(len(frame), dtype=bool)
+
+    good = good_units(df)
+    if not bin_col:
         unmapped.append({"family": "Overview", "token": "Interface bin column", "count": 1,
                          "reason": "no INTERFACE_BIN column in the CSV; every row is counted as a good unit", "examples": ""})
 
@@ -913,12 +1042,13 @@ def main() -> int:
     flow_rows = [[*k, *v] for k, v in sorted(merged.items())]
 
     ovw_upm = {}
+    good_s = good if not full_state else good_units(s_df)
     for label, pu in UPM_OVERVIEW:
         up = upm_series.get(pu)
         if not up:
             continue
-        okx = good & np.isfinite(up["x"])
-        ovw_upm[label] = {"pu": pu, "col": up["col"], "target": up["target"], "p": prog_of_row[okx].astype(int).tolist(),
+        okx = good_s & np.isfinite(up["x"])
+        ovw_upm[label] = {"pu": pu, "col": up["col"], "target": up["target"], "p": s_prog[okx].astype(int).tolist(),
                           "x": [r(v, 5) for v in up["x"][okx]]}
     overview_json = {
         "binCol": bin_col,
@@ -940,11 +1070,17 @@ def main() -> int:
             .to_csv(out_dir / "dts_points.csv", index=False)
     pd.DataFrame(unmapped).to_csv(out_dir / "unmapped_tokens.csv", index=False)
 
+    if use_parquet:
+        src_mtime = max(p.stat().st_mtime for p in pq_parts)
+    else:
+        src_mtime = input_csv.stat().st_mtime
     status = {
-        "input": str(input_csv),
-        "modified": dt.datetime.fromtimestamp(input_csv.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+        "input": str(args.input_parquet) if use_parquet else str(input_csv),
+        "modified": dt.datetime.fromtimestamp(src_mtime).strftime("%Y-%m-%d %H:%M"),
         "generated": dt.datetime.now().strftime("%Y-%m-%d %H:%M"),
         "rowsTotal": total_rows, "rowsUsed": n, "programFilter": args.program or None,
+        "sampled": bool(full_state), "unitsShown": s_n, "maxUnits": args.max_units,
+        "partitions": len(pq_parts) if use_parquet else None,
         "columns": {"vmin": len(vmin_cols), "dts": len(dts_cols), "ilasVmin": len(ilas_cols), "siccAtRef": len(sicc_atref), "siccRawValue": len(sicc_raw)},
         "upm": upm_status,
         "upmOutliers": {pu: {"valid": v["valid"], "excluded": v["excluded"], "lo": r(v["lo"], 4), "hi": r(v["hi"], 4)}

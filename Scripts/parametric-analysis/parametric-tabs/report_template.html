@@ -470,7 +470,7 @@ function boxStrip(container, cats, o) {
 function initSel() {
   const pop = $('#tp-pop');
   pop.innerHTML = '<div class="acts"><button id="tp-all">Select all</button><button id="tp-none">Clear</button></div>' +
-    D.programs.map((p, i) => `<label><input type="checkbox" data-i="${i}" checked> ${esc(p.name)} <span class="muted">[${esc(p.tag)}] n=${p.units}</span></label>`).join('');
+    D.programs.map((p, i) => `<label><input type="checkbox" data-i="${i}" checked> ${esc(p.name)} <span class="muted">[${esc(p.tag)}] n=${p.units}${p.shown < p.units ? ` (plotted ${p.shown})` : ''}</span></label>`).join('');
   const boxes = () => [...pop.querySelectorAll('input[type=checkbox]')];
   const setSel = () => {
     SELS = new Set(boxes().filter(b => b.checked).map(b => +b.dataset.i));
@@ -1069,6 +1069,7 @@ function renderFoot() {
   const out = Object.entries(s.upmOutliers).map(([k, v]) => `${k} ${v.excluded}/${v.valid} excluded (UPM outside median+-3sigma)`).join('; ');
   $('#foot').innerHTML = `Input: ${esc(s.input)} (modified ${s.modified}); generated ${s.generated}; rows used ${s.rowsUsed}/${s.rowsTotal}` +
     (s.programFilter ? `; program filter ${esc(s.programFilter)}` : '') +
+    (s.sampled ? `<br><b class="warn">Sampled</b>: per-unit plots and fits use a deterministic fair-share sample of ${s.unitsShown} of ${s.rowsUsed} units (cap ${s.maxUnits}); unit counts, flow matrix and limiter tabs use every unit.` : '') +
     `<br>Columns: Vmin ${s.columns.vmin}, ILAS limiter ${s.columns.ilasVmin}, SICC at-ref ${s.columns.siccAtRef}, SICC raw class value ${s.columns.siccRawValue}, DTS ${s.columns.dts}` +
     `<br>${u}${out ? '<br>' + out : ''}<br>Official-TP tokens: ${s.officialTokens.join(', ')}` +
     ' (programs outside this list are tagged standard-name / other).';

@@ -82,6 +82,14 @@ Use the task registration script below to set the recurring Thursday runner:
 
 `Scripts/data-pulling/weekly-aqua-pull/register_nvlax_weekly_thursday_cleanup_task.ps1`
 
+## Parquet store and single HTML report (opt-in)
+
+Add `-UpdateParquetStore` to the entry point (after the cleanup and validation) to run `Scripts/parametric-analysis/parametric-tabs/weekly_parquet_store.py run`:
+- `ingest`: each retained per-TP CSV is upserted into `<root>\Parquet_store\parquet\TP=<csv stem>\data.parquet` (reduced columns, all TPs, zstd). Same key rule as above (`VISUAL_ID` + `LOTFROMFS`, newest non-empty cell wins). A CSV is skipped when its size and mtime are unchanged. Writes are atomic and verified (all keys present) before the partition is replaced.
+- `retention`: the 3-WW window is counted from the TP's last update (last changed ingest). Report only by default; `weekly_parquet_store.py retention --apply` deletes a CSV only if the Parquet partition is verified, holds every CSV key, and the TP is not in `--keep-forever` (default `25E`).
+- `report`: one HTML for all TPs (`build_parametric_tabs.py --input-parquet`). Plots use a deterministic fair-share sample capped by `-ParquetMaxUnits` (default 15000); overview counts, flow matrix and limiter use all units. The footer and TP labels state when sampling applied.
+- Drill-down to raw per-unit columns is a reserved placeholder (`weekly_parquet_store.py drilldown`), not defined yet.
+
 ## Fast prompt
 
 Use this single prompt:
