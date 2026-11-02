@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NVLAX SAAT Vmin week-to-week shift analysis</title>
+<style>
+  body { font-family: Segoe UI, Arial, sans-serif; margin: 0; background: #f4f5f7; color: #1d2733; }
+  header { background: #0b3d6b; color: #fff; padding: 14px 24px; }
+  header h1 { margin: 0 0 4px 0; font-size: 20px; }
+  header .sub { font-size: 12px; opacity: .85; }
+  main { padding: 16px 24px; }
+  section { background: #fff; border-radius: 6px; padding: 14px 18px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  h2 { margin: 0 0 10px 0; font-size: 16px; color: #0b3d6b; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { border-bottom: 1px solid #e3e6ea; padding: 4px 8px; text-align: left; white-space: nowrap; }
+  th { background: #eef2f6; cursor: pointer; position: sticky; top: 0; }
+  tr.click:hover { background: #e8f1fb; cursor: pointer; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .flag { background: #fdecea; }
+  .scroll { max-height: 320px; overflow: auto; }
+  .controls { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; font-size: 13px; }
+  select { padding: 3px 6px; font-size: 13px; }
+  .chip { display: inline-block; background: #eef2f6; border-radius: 10px; padding: 2px 10px; margin-right: 6px; font-size: 12px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .pos { color: #b3261e; } .neg { color: #0b57d0; }
+  .muted { color: #6b7785; }
+</style>
+</head>
+<body>
+<header>
+  <h1>NVLAX SAAT UPSVF Vmin - week-to-week shift analysis</h1>
+  <div class="sub" id="sub"></div>
+</header>
+<main>
+  <section id="portray">
+    <h2>Vmin / FEM by hardware over time (descriptive - no thresholds)</h2>
+    <div class="controls">
+      <label>Frequency <select id="vFreq"></select></label>
+      <label>Test program <select id="vTp"></select></label>
+      <label>Hardware factor <select id="vFac"></select></label>
+      <label>Metric <select id="vMet"><option value="r">Vmin / FEM (x1000)</option><option value="raw">Raw Vmin (mV)</option></select></label>
+      <label>Min units per box <input id="vMin" type="number" value="8" min="1" style="width:50px"></label>
+      <span id="vInfo" class="muted"></span>
+    </div>
+    <div id="vBox" style="height:440px"></div>
+    <div id="vHeat" style="height:420px"></div>
+    <div id="vCtl"></div>
+  </section>
+  <section>
+    <h2>Flagged shifts</h2>
+    <div id="cfgchips"></div>
+    <div class="scroll"><table id="flagtbl"></table></div>
+  </section>
+  <section>
+    <h2>Hardware ranking (levels flagged against the weekly median, across series)</h2>
+    <div class="scroll"><table id="boardtbl"></table></div>
+  </section>
+  <section id="explorer">
+    <h2>Series explorer</h2>
+    <div class="controls">
+      <label>Vmin basis <select id="selBasis"><option value="ratio">Vmin / FEM (x1000)</option><option value="upm">UPM-regression normalized</option><option value="raw">Raw</option></select></label>
+      <label>Test program <select id="selTp"></select></label>
+      <label>Token <select id="selTok"></select></label>
+      <label>Color / HW factor <select id="selFac"></select></label>
+      <span id="seriesInfo" class="muted"></span>
+    </div>
+    <div id="plotBox" style="height:380px"></div>
+    <div id="plotTime" style="height:420px"></div>
+    <div id="plotLevels" style="height:420px"></div>
+    <div id="plotHeat" style="height:420px"></div>
+    <div class="grid2">
+      <div><h2>Week-to-week tests</h2><div class="scroll"><table id="testtbl"></table></div></div>
+      <div><h2>HW levels (selected factor)</h2><div class="scroll"><table id="hwtbl"></table></div></div>
+    </div>
+    <div id="cpinfo" class="muted" style="margin-top:8px"></div>
+  </section>
+  <section>
+    <h2>Data quality and coverage</h2>
+    <div class="scroll"><table id="dqtbl"></table></div>
+  </section>
+</main>
+<script>/*__PLOTLY__*/</script>
+<script type="application/json" id="data">/*__DATA__*/</script>
+<script>
+const D = JSON.parse(document.getElementById('data').textContent);
+const $ = id => document.getElementById(id);
+const fmt = (x, d = 1) => (x === null || x === undefined) ? '' : Number(x).toFixed(d);
+const fmtQ = x => (x === null || x === undefined) ? '' : (x < 1e-4 ? x.toExponential(1) : x.toFixed(4));
+const fmtMs = ms => new Date(ms).toISOString().replace('T', ' ').slice(0, 16) + ' UTC';
+const signCls = x => x > 0 ? 'pos' : (x < 0 ? 'neg' : '');
+const median = a => { if (!a.length) return NaN; const s = a.slice().sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+const PALETTE = ['#1f77b4','#ff7f0e','#2ca02c','#9467bd','#8c564b','#e377c2','#17becf','#bcbd22','#d62728','#393b79','#637939','#843c39'];
+
+$('sub').textContent = `Generated ${D.meta.generated} | HW source: ${D.meta.hw_source} | ${D.meta.n_series} series analysed | ${D.meta.n_flags} flags | data ${fmtMs(D.meta.t_min)} to ${fmtMs(D.meta.t_max)}`;
+const c = D.meta.cfg;
+$('cfgchips').innerHTML = [`flag = q < ${c.alpha} and |shift| >= ${c.min_shift_mv} mV`, `min ${c.min_n} units per week`, `min ${c.hw_min_n} units per HW level`,
+  `${c.n_perm} block permutations`, 'units with blank or non-positive Vmin dropped', 'times in UTC, weeks start Monday'].map(t => `<span class="chip">${t}</span>`).join('');
+
+function table(el, cols, rows, opts = {}) {
+  const head = '<tr>' + cols.map((k, i) => `<th data-i="${i}">${k.h}</th>`).join('') + '</tr>';
+  const body = rows.map((r, ri) => `<tr class="${opts.click ? 'click ' : ''}${opts.rowCls ? opts.rowCls(r) : ''}" data-r="${ri}">` +
+    cols.map(k => { const v = k.v(r); return `<td class="${k.num ? 'num ' : ''}${k.cls ? k.cls(r) : ''}">${v === null || v === undefined ? '' : v}</td>`; }).join('') + '</tr>').join('');
+  el.innerHTML = head + body;
+  if (opts.click) el.querySelectorAll('tr.click').forEach(tr => tr.onclick = () => opts.click(rows[+tr.dataset.r]));
+  el.querySelectorAll('th').forEach(th => th.onclick = () => {
+    const i = +th.dataset.i, dir = th.dataset.dir === 'a' ? -1 : 1; th.dataset.dir = dir === 1 ? 'a' : 'd';
+    const sorted = rows.slice().sort((a, b) => { const x = cols[i].s ? cols[i].s(a) : cols[i].v(a), y = cols[i].s ? cols[i].s(b) : cols[i].v(b); return (x > y ? 1 : x < y ? -1 : 0) * dir; });
+    table(el, cols, sorted, opts);
+  });
+}
+
+// ---- flagged table
+const BASIS = { ratio: 'Vmin / FEM (x1000)', upm: 'UPM-regression normalized', raw: 'Raw' };
+table($('flagtbl'), [
+  { h: 'Basis', v: r => BASIS[r.basis] },
+  { h: 'Test program', v: r => r.tp },
+  { h: 'Freq (GHz)', v: r => fmt(r.freq, 3), s: r => r.freq, num: true },
+  { h: 'Type', v: r => r.type },
+  { h: 'When', v: r => r.when, s: r => r.when_sort },
+  { h: 'Shift (mV)', v: r => fmt(r.shift_mv), s: r => Math.abs(r.shift_mv), num: true, cls: r => signCls(r.shift_mv) },
+  { h: 'q', v: r => fmtQ(r.q), s: r => r.q, num: true },
+  { h: 'n before / after', v: r => `${r.n_a} / ${r.n_b}` },
+  { h: 'HW suspects (vs weekly median)', v: r => r.suspects || '' },
+], D.flags, { click: r => selectSeries(r.sid) });
+if (!D.flags.length) $('flagtbl').innerHTML = '<tr><td>No flagged shifts at the configured thresholds.</td></tr>';
+
+table($('boardtbl'), [
+  { h: 'Basis', v: r => BASIS[r.basis] },
+  { h: 'Factor', v: r => r.factor },
+  { h: 'Level', v: r => r.level },
+  { h: 'Series flagged', v: r => r.series_flagged, num: true },
+  { h: 'Series tested', v: r => r.series_tested, num: true },
+  { h: 'Mean residual (mV)', v: r => fmt(r.mean_resid), s: r => Math.abs(r.mean_resid), num: true, cls: r => signCls(r.mean_resid) },
+  { h: 'Worst (mV)', v: r => fmt(r.worst), s: r => Math.abs(r.worst), num: true, cls: r => signCls(r.worst) },
+  { h: 'Worst series', v: r => r.worst_series },
+], D.leaderboard);
+if (!D.leaderboard.length) $('boardtbl').innerHTML = '<tr><td>No HW level exceeds the thresholds.</td></tr>';
+
+table($('dqtbl'), [
+  { h: 'Test program', v: r => r.tp },
+  { h: 'Token', v: r => r.token },
+  { h: 'Rows', v: r => r.rows, num: true },
+  { h: 'Blank', v: r => r.blank, num: true },
+  { h: 'Non-positive', v: r => r.nonpositive, num: true },
+  { h: 'Kept (units)', v: r => r.kept, num: true },
+  { h: 'Weeks with enough units', v: r => r.valid_weeks, num: true },
+  { h: 'HW join coverage', v: r => r.hw_cov === null ? 'n/a' : (100 * r.hw_cov).toFixed(1) + '%', s: r => r.hw_cov, num: true },
+  { h: 'UPM fit R2', v: r => r.upm_r2 === null || r.upm_r2 === undefined ? 'n/a' : r.upm_r2.toFixed(2), s: r => r.upm_r2, num: true },
+  { h: 'UPM slope (mV/UPM)', v: r => r.upm_slope === null || r.upm_slope === undefined ? '' : r.upm_slope.toFixed(2), num: true },
+  { h: 'Status', v: r => r.status },
+], D.dq);
+
+// ---- explorer
+const tps = [...new Set(D.series.map(s => s.tp))];
+$('selTp').innerHTML = tps.map(t => `<option>${t}</option>`).join('');
+$('selFac').innerHTML = D.meta.factors.map(f => `<option>${f}</option>`).join('');
+if (!D.series.some(s => s.basis === 'ratio')) $('selBasis').value = D.series.some(s => s.basis === 'upm') ? 'upm' : 'raw';
+function fillTokens() {
+  const list = D.series.filter(s => s.tp === $('selTp').value && s.basis === $('selBasis').value);
+  $('selTok').innerHTML = list.map(s => `<option value="${s.sid}">${s.freq.toFixed(3)} GHz - ${s.token}</option>`).join('');
+}
+function selectSeries(sid) {
+  const s = D.series[sid]; $('selBasis').value = s.basis; $('selTp').value = s.tp; fillTokens(); $('selTok').value = sid; render();
+  $('explorer').scrollIntoView({ behavior: 'smooth' });
+}
+$('selBasis').onchange = () => { fillTokens(); render(); };
+$('selTp').onchange = () => { fillTokens(); render(); };
+$('selTok').onchange = render; $('selFac').onchange = render;
+
+function render() {
+  if (!D.series.length || $('selTok').value === '') return;
+  const s = D.series[+$('selTok').value]; const fac = $('selFac').value; const u = s.u;
+  const flaggedWeeks = new Set(s.tests.filter(t => t.kind === 'consecutive' && t.flag).map(t => t.label_b));
+  const labels = s.weeks.map(w => w.label);
+  const yTitle = s.basis === 'ratio' ? 'Vmin / FEM x1000 (1030 = 1.03 V/FEM)' : (s.basis === 'upm' ? 'UPM-normalized Vmin (mV)' : 'Vmin (mV)');
+  $('seriesInfo').textContent = `${BASIS[s.basis]} | ${s.n} units | ${s.weeks.filter(w => w.valid).length} weeks with enough units` +
+    (s.basis === 'upm' && s.norm ? ` | fit ${fmt(s.norm.slope, 2)} mV per UPM, R2 ${fmt(s.norm.r2, 2)}` : '') +
+    (s.trend ? ` | trend ${fmt(s.trend.slope_mv_per_week, 2)} mV/week (tau ${fmt(s.trend.tau, 2)}, p ${fmtQ(s.trend.p)})` : '');
+
+  // weekly boxplot
+  const xs = [[], []], ys = [[], []];
+  u.w.forEach((wi, i) => { const k = flaggedWeeks.has(labels[wi]) ? 1 : 0; xs[k].push(labels[wi]); ys[k].push(u.v[i]); });
+  const box = [
+    { type: 'box', x: xs[0], y: ys[0], name: 'week', marker: { color: '#1f77b4' }, boxpoints: false },
+    { type: 'box', x: xs[1], y: ys[1], name: 'week flagged vs previous', marker: { color: '#d62728' }, boxpoints: false },
+    { type: 'scatter', mode: 'lines+markers', x: s.weeks.filter(w => w.valid).map(w => w.label), y: s.weeks.filter(w => w.valid).map(w => w.median), name: 'weekly median', line: { color: '#222', width: 1.5 } },
+  ];
+  Plotly.react('plotBox', box, {
+    margin: { t: 24, l: 60, r: 20, b: 60 }, yaxis: { title: yTitle }, xaxis: { title: 'Week (Monday start, UTC)', categoryorder: 'array', categoryarray: labels },
+    legend: { orientation: 'h', y: 1.12 }, boxmode: 'overlay', title: { text: `${s.tp} - ${s.freq.toFixed(3)} GHz`, font: { size: 14 } },
+  }, { responsive: true });
+
+  // time scatter, colored by factor
+  const names = s.levels[fac], codes = u.f[fac];
+  const counts = {}; codes.forEach(c => counts[c] = (counts[c] || 0) + 1);
+  const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 12).map(Number);
+  const traces = top.map((c, k) => ({ type: 'scatter', mode: 'markers', name: names[c], x: [], y: [], marker: { size: 4, opacity: .6, color: PALETTE[k % PALETTE.length] } }));
+  const other = { type: 'scatter', mode: 'markers', name: 'other', x: [], y: [], marker: { size: 4, opacity: .4, color: '#bbb' } };
+  const idxOf = new Map(top.map((c, k) => [c, k]));
+  for (let i = 0; i < u.t.length; i++) {
+    const tr = idxOf.has(codes[i]) ? traces[idxOf.get(codes[i])] : other;
+    tr.x.push(new Date(u.t[i])); tr.y.push(u.v[i] + (((i * 2654435761) % 1000) / 1000 - 0.5) * 4);
+  }
+  const days = {}; u.t.forEach((t, i) => { const d = Math.floor(t / 864e5); (days[d] = days[d] || []).push(u.v[i]); });
+  const dk = Object.keys(days).map(Number).sort((a, b) => a - b).filter(d => days[d].length >= 3);
+  const daily = { type: 'scatter', mode: 'lines+markers', name: 'daily median (n>=3)', x: dk.map(d => new Date(d * 864e5 + 432e5)), y: dk.map(d => median(days[d])), line: { color: '#000', width: 2 }, marker: { size: 6 } };
+  const allV = u.v, ymin = Math.min(...allV) - 10, ymax = Math.max(...allV) + 10;
+  const shapes = [], extra = [];
+  s.progs.slice(1).forEach(p => {
+    shapes.push({ type: 'line', xref: 'x', yref: 'paper', x0: new Date(p.first_ms), x1: new Date(p.first_ms), y0: 0, y1: 1, line: { color: '#777', width: 1, dash: 'dot' } });
+  });
+  if (s.progs.length > 1) extra.push({ type: 'scatter', mode: 'markers', name: 'program first seen', x: s.progs.slice(1).map(p => new Date(p.first_ms)), y: s.progs.slice(1).map(() => ymin), text: s.progs.slice(1).map(p => p.name), hoverinfo: 'text+x', marker: { symbol: 'triangle-up', size: 10, color: '#555' } });
+  if (s.cp) {
+    shapes.push({ type: 'line', xref: 'x', yref: 'paper', x0: new Date(s.cp.split_ms), x1: new Date(s.cp.split_ms), y0: 0, y1: 1, line: { color: s.cp.flag ? '#d62728' : '#e8a2a0', width: 2, dash: 'dash' } });
+    extra.push({ type: 'scatter', mode: 'markers', name: 'change point' + (s.cp.flag ? ' (flagged)' : ' (not flagged)'), x: [new Date(s.cp.split_ms)], y: [ymax], marker: { symbol: 'diamond', size: 11, color: s.cp.flag ? '#d62728' : '#e8a2a0' }, hovertext: [`shift ${fmt(s.cp.shift_mv)} mV, q ${fmtQ(s.cp.q)}`], hoverinfo: 'text+x' });
+  }
+  Plotly.react('plotTime', [...traces, other, daily, ...extra], {
+    margin: { t: 24, l: 60, r: 20, b: 50 }, yaxis: { title: yTitle + ', display jitter +/-2' }, xaxis: { title: 'Class test end time (UTC)' }, shapes, legend: { orientation: 'h', y: 1.18 },
+  }, { responsive: true });
+
+  // weekly median per HW level (absolute level, after UPM normalization when selected)
+  const lvlTop = top.filter(c => counts[c] >= D.meta.cfg.hw_min_n && names[c] !== '(unknown)').slice(0, 12);
+  const vW = s.weeks.map((w, i) => i).filter(i => s.weeks[i].valid);
+  const lineTraces = lvlTop.map((c, k) => {
+    const xx = [], yy = [], nn = [];
+    vW.forEach(wi => { const r = []; for (let i = 0; i < codes.length; i++) if (codes[i] === c && u.w[i] === wi) r.push(u.v[i]); if (r.length >= 3) { xx.push(labels[wi]); yy.push(median(r)); nn.push(r.length); } });
+    return { type: 'scatter', mode: 'lines+markers', name: names[c], x: xx, y: yy, text: nn.map(n => 'n=' + n), line: { color: PALETTE[k % PALETTE.length] }, connectgaps: false };
+  });
+  lineTraces.push({ type: 'scatter', mode: 'lines', name: 'all units', x: vW.map(i => labels[i]), y: vW.map(i => s.weeks[i].median), line: { color: '#000', width: 3, dash: 'dot' } });
+  if (s.alarm) lineTraces.push({ type: 'scatter', mode: 'lines', name: 'alarm ' + s.alarm.line.toFixed(0), x: vW.map(i => labels[i]), y: vW.map(() => s.alarm.line), line: { color: '#c00000', width: 2, dash: 'dash' } });
+  Plotly.react('plotLevels', lineTraces, {
+    margin: { t: 24, l: 60, r: 20, b: 50 }, yaxis: { title: 'Weekly median ' + yTitle }, xaxis: { title: 'Week (' + fac + ' levels, n>=3 per week)', type: 'category', categoryorder: 'array', categoryarray: labels }, legend: { orientation: 'h', y: 1.18 },
+  }, { responsive: true });
+
+  // heatmap: level x week median residual
+  const wmed = s.weeks.map(w => w.median), vWeeks = s.weeks.map((w, i) => i).filter(i => s.weeks[i].valid);
+  const lvlIdx = top.filter(c => counts[c] >= D.meta.cfg.hw_min_n && names[c] !== '(unknown)').slice(0, 25);
+  const z = lvlIdx.map(c => vWeeks.map(wi => { const r = []; for (let i = 0; i < codes.length; i++) if (codes[i] === c && u.w[i] === wi) r.push(u.v[i] - wmed[wi]); return r.length >= 3 ? median(r) : null; }));
+  Plotly.react('plotHeat', [{ type: 'heatmap', x: vWeeks.map(i => labels[i]), y: lvlIdx.map(c => names[c]), z, zmid: 0, colorscale: 'RdBu', reversescale: true, colorbar: { title: 'mV vs week median' }, hoverongaps: false }], {
+    margin: { t: 24, l: 140, r: 20, b: 50 }, xaxis: { title: 'Week', type: 'category' }, yaxis: { title: fac, type: 'category', automargin: true },
+  }, { responsive: true });
+
+  // tables
+  table($('testtbl'), [
+    { h: 'Comparison', v: r => (r.kind === 'consecutive' ? '' : 'vs first: ') + `${r.label_a} -> ${r.label_b}` },
+    { h: 'Median a', v: r => fmt(r.median_a), num: true }, { h: 'Median b', v: r => fmt(r.median_b), num: true },
+    { h: 'Shift (mV)', v: r => fmt(r.shift_mv), num: true, cls: r => signCls(r.shift_mv) },
+    { h: 'n a / b', v: r => `${r.n_a} / ${r.n_b}` }, { h: 'q', v: r => fmtQ(r.q), num: true },
+    { h: 'Flag', v: r => r.flag ? 'FLAG' : '' },
+  ], s.tests, { rowCls: r => r.flag ? 'flag' : '' });
+  const hwRows = s.hw.filter(h => h.factor === fac);
+  table($('hwtbl'), [
+    { h: 'Level', v: r => r.level }, { h: 'n', v: r => r.n, num: true },
+    { h: 'Resid vs rest (mV)', v: r => fmt(r.resid_mv), s: r => Math.abs(r.resid_mv), num: true, cls: r => signCls(r.resid_mv) },
+    { h: 'q', v: r => fmtQ(r.q), num: true },
+    { h: 'Step in level (mV)', v: r => fmt(r.step_mv), s: r => Math.abs(r.step_mv || 0), num: true, cls: r => signCls(r.step_mv) },
+    { h: 'Step date', v: r => r.step_ms ? fmtMs(r.step_ms).slice(0, 10) : '' , s: r => r.step_ms || 0 },
+    { h: 'Step q', v: r => fmtQ(r.step_q), num: true },
+    { h: 'Share before cp', v: r => r.share_before === null ? '' : (100 * r.share_before).toFixed(1) + '%', num: true },
+    { h: 'Share after cp', v: r => r.share_after === null ? '' : (100 * r.share_after).toFixed(1) + '%', num: true },
+    { h: 'Shift in level (mV)', v: r => fmt(r.level_shift_mv), num: true, cls: r => signCls(r.level_shift_mv) },
+    { h: 'Flag', v: r => r.flag ? 'FLAG' : '' },
+  ], hwRows.sort((a, b) => Math.abs(b.eff_mv) - Math.abs(a.eff_mv)), { rowCls: r => r.flag ? 'flag' : '' });
+  let info = '';
+  if (s.cp) info += `Change point: ${fmtMs(s.cp.split_ms)} (between ${fmtMs(s.cp.last_before_ms)} and first unit after), shift ${fmt(s.cp.shift_mv)} mV, permutation q ${fmtQ(s.cp.q)}, ${s.cp.n_before} units before / ${s.cp.n_after} after.`;
+  if (s.scope[fac]) info += ` Scope over ${fac}: ${s.scope[fac].levels_shifted} of ${s.scope[fac].levels_tested} levels show at least half of the shift.`;
+  if (s.kw[fac]) info += ` Kruskal-Wallis across ${fac}: p ${fmtQ(s.kw[fac].p)}, epsilon-squared ${fmt(s.kw[fac].eps2, 3)}.`;
+  $('cpinfo').textContent = info;
+}
+if (D.series.length) { fillTokens(); render(); }
+
+// ---- descriptive portrayal: Vmin/FEM by hardware over time
+const V = D.view;
+$('vFreq').innerHTML = V.freqs.map((f, i) => `<option value="${i}">${f.toFixed(3)} GHz</option>`).join('');
+$('vFreq').value = String(Math.max(0, V.freqs.findIndex(f => Math.abs(f - 3.6) < 1e-6)));
+$('vTp').innerHTML = '<option value="-1">All programs</option>' + V.tps.map((p, i) => `<option value="${i}">${p}</option>`).join('');
+$('vFac').innerHTML = Object.keys(V.lv).map(f => `<option>${f}</option>`).join('');
+if (Object.keys(V.lv).includes('Interface_Unit')) $('vFac').value = 'Interface_Unit';
+function renderView() {
+  const fi = +$('vFreq').value, pi = +$('vTp').value, fac = $('vFac').value, met = $('vMet').value, minN = +$('vMin').value || 1;
+  const M = met === 'r' ? V.r : V.raw, lv = V.lv[fac], names = V.names[fac];
+  const ytitle = met === 'r' ? 'Vmin / FEM x1000' : 'Vmin (mV)';
+  const idx = [];
+  for (let i = 0; i < M.length; i++) if (V.f[i] === fi && (pi < 0 || V.p[i] === pi)) idx.push(i);
+  const cnt = {}; idx.forEach(i => cnt[lv[i]] = (cnt[lv[i]] || 0) + 1);
+  const levels = Object.keys(cnt).map(Number).filter(c => cnt[c] >= minN && names[c] !== '(unknown)').sort((a, b) => names[a] < names[b] ? -1 : 1).slice(0, 24);
+  const col = new Map(levels.map((c, k) => [c, PALETTE[k % PALETTE.length]]));
+  $('vInfo').textContent = `${idx.length} units, ${levels.length} ${fac} levels shown`;
+  const nW = V.weeks.length;
+  // 1) box per week, grouped by level
+  const boxes = levels.map(c => {
+    const x = [], y = [];
+    idx.forEach(i => { if (lv[i] === c) { x.push(V.weeks[V.w[i]]); y.push(M[i]); } });
+    return { type: 'box', name: names[c], x, y, marker: { color: col.get(c) }, boxpoints: false };
+  });
+  const ax = []; idx.forEach(i => ax.push(M[i]));
+  Plotly.react('vBox', boxes, { boxmode: 'group', margin: { t: 20, l: 60, r: 20, b: 50 }, yaxis: { title: ytitle }, xaxis: { title: 'Week (Monday start, UTC)', type: 'category', categoryorder: 'array', categoryarray: V.weeks }, legend: { orientation: 'h', y: 1.15 } }, { responsive: true });
+  // 2) heatmap level x week median
+  const wmed = V.weeks.map((_, w) => { const a = []; idx.forEach(i => { if (V.w[i] === w) a.push(M[i]); }); return median(a); });
+  const z = levels.map(c => V.weeks.map((_, w) => { const a = []; idx.forEach(i => { if (lv[i] === c && V.w[i] === w) a.push(M[i]); }); return a.length >= minN ? median(a) : null; }));
+  const zt = z.map(r => r.map(v => v === null ? '' : v.toFixed(0)));
+  Plotly.react('vHeat', [{ type: 'heatmap', x: V.weeks, y: levels.map(c => names[c]), z, text: zt, texttemplate: '%{text}', colorscale: 'YlOrRd', colorbar: { title: 'weekly median' }, hoverongaps: false }], { margin: { t: 20, l: 150, r: 20, b: 50 }, xaxis: { title: 'Week', type: 'category' }, yaxis: { type: 'category', automargin: true, title: fac } }, { responsive: true });
+  // 3) per-level control chart (small multiples, shared y)
+  const sorted = ax.slice().sort((a, b) => a - b);
+  const lo = sorted[Math.floor(sorted.length * 0.005)] ?? 0, hi = sorted[Math.floor(sorted.length * 0.995)] ?? 1;
+  const cols = 4, rows = Math.max(1, Math.ceil(levels.length / cols));
+  const traces = [], layout = { margin: { t: 24, l: 50, r: 10, b: 30 }, showlegend: false, height: rows * 230 + 40, annotations: [] };
+  const gx = 0.04, gy = 0.09;
+  levels.forEach((c, k) => {
+    const r = Math.floor(k / cols), cc = k % cols, n = k + 1;
+    const w = (1 - gx * (cols - 1)) / cols, h = (1 - gy * (rows - 1)) / rows;
+    const x0 = cc * (w + gx), y1 = 1 - r * (h + gy);
+    layout['xaxis' + n] = { domain: [x0, x0 + w], anchor: 'y' + n, type: 'date', tickfont: { size: 9 } };
+    layout['yaxis' + n] = { domain: [y1 - h, y1], anchor: 'x' + n, range: [lo, hi], tickfont: { size: 9 }, showticklabels: cc === 0 };
+    const x = [], y = [], wk = {};
+    idx.forEach(i => { if (lv[i] === c) { x.push(new Date(V.t[i])); y.push(M[i]); (wk[V.w[i]] = wk[V.w[i]] || { t: [], v: [] }); wk[V.w[i]].t.push(V.t[i]); wk[V.w[i]].v.push(M[i]); } });
+    traces.push({ type: 'scatter', mode: 'markers', x, y, xaxis: 'x' + n, yaxis: 'y' + n, marker: { size: 3, opacity: .45, color: col.get(c) }, hoverinfo: 'x+y' });
+    const ws = Object.keys(wk).map(Number).filter(w2 => wk[w2].v.length >= 3).sort((a, b) => a - b);
+    traces.push({ type: 'scatter', mode: 'lines+markers', x: ws.map(w2 => new Date(median(wk[w2].t))), y: ws.map(w2 => median(wk[w2].v)), xaxis: 'x' + n, yaxis: 'y' + n, line: { color: '#000', width: 1.5 }, marker: { size: 5 }, hoverinfo: 'y' });
+    layout.annotations.push({ text: `${names[c]} (n=${cnt[c]})`, xref: 'paper', yref: 'paper', x: x0 + w / 2, y: y1 + 0.005, xanchor: 'center', yanchor: 'bottom', showarrow: false, font: { size: 11 } });
+  });
+  $('vCtl').style.height = layout.height + 'px';
+  Plotly.react('vCtl', traces, layout, { responsive: true });
+}
+['vFreq', 'vTp', 'vFac', 'vMet', 'vMin'].forEach(id => $(id).onchange = renderView);
+renderView();
+</script>
+</body>
+</html>

@@ -47,6 +47,35 @@ This skill does not include:
   -ManifestFolderName "pilot_cleanup_manifests"
 ```
 
+## Merge policy (per-cell, never whole-row)
+
+- Row key = `VISUAL_ID` + `LOTFROMFS` (upper-cased, trimmed). A different `LOTFROMFS` is a different row: both are kept.
+- Same key: the newest non-empty cell wins; empty cells are filled from older rows. Cells whose value changes are listed in `pilot_cleanup_manifests\WWnn_YYYY_conflicts.csv` (ClassTp, Key, Column, OlderValue, NewerValue).
+- Weeks are always merged oldest to newest, daily files in date order.
+- Headers are the union of the retained file and every contributing source file (not only the first row).
+- Rows with a blank program name, an unmapped program or a blank key are never dropped silently: they are listed under `SkippedRows` in the week manifest and fail validation.
+
+## Mandatory validation (data-integrity gate)
+
+After each week's merge the engine runs `Scripts/data-pulling/weekly-aqua-pull/validate_weekly_cleanup.py` (Python, independent of the engine code):
+- expected = pre-merge retained snapshot overlaid with the week's source files in date order; retained must match it exactly
+- no row or column missing, no duplicate keys, no non-empty cell lost, emptied or changed, no unexplained row or value, no `~` in AT_REF columns
+- independent program -> file mapping check (longest retained-file-stem prefix vs engine regex)
+- per (TP, lot) accounting in `WWnn_YYYY_validation.lots.csv`; full result in `WWnn_YYYY_validation.json`
+- `-DeleteOriginals` only deletes a week's originals when its validation passed; `-SkipValidation` together with `-DeleteOriginals` is refused
+
+Full audit of the whole retained folder against archived originals and a pre-merge backup:
+
+```powershell
+python validate_weekly_cleanup.py --retained-dir "<root>\By-Class-TP-final" --baseline-dir "<root>\_organize_safety_backup_*\By-Class-TP-final" --report "<root>\audit.json" --sources <all Vmin_YYYYMMDD.csv in date order>
+```
+
+Exit code 0 = ALL OK. Always report the validator result with any cleanup run.
+
+## Rebuild / recovery
+
+Stage the pre-merge retained files in `<staging>\By-Class-TP-final`, copy the original `Vmin_YYYYMMDD.csv` files to `<staging>`, run the entry point with `-WeeklyRunsDir <staging>` (no `-DeleteOriginals`), check the validator output, then swap the staged retained files into the real folder (keep the old ones as backup).
+
 ## Scheduled automation
 
 Use the task registration script below to set the recurring Thursday runner:

@@ -32,6 +32,13 @@ CHANGES (2026-09-26):
 - Added optional LastNDaysTestStart support for UPSVF AQUA pulls
     Reason: daily NVLAX62A0H25 automation needs a Test Start lookback while preserving the existing ILAS VisualID-driven flow
 
+CHANGES (2026-11-02):
+- SICC/CDYN at-ref tokens (VA-NA-*-SICC_TESTER_AT_REF, VA-NA-*-SICC_SYSTEM_AT_REF, VA-NA-*-CDYN_AT_REF) are now collapsed
+  from '~' concatenated strings ("2.2818~2.2818~...") to ONE numeric value per unit and column, in place (same column names).
+  Non-degenerate / non-numeric cells use the first numeric value and are noted in column AtRef_Parse_Comment.
+  The empty legacy VA-NA-SUMMARY-RESULTS[*::SICC_*_AT_REF] columns are dropped. Logic lives in nvlax_atref_helpers.ps1
+  (shared with backfill_nvlax_atref_cdyn.ps1). Also applies to -RawInputFile.
+
 .PARAMETER LastNDaysTestEnd
 Default: 7 (filters AQUA pull to last 7 days of test end date)
 
@@ -63,6 +70,13 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
+
+$atRefHelperPath = Join-Path (Split-Path -Path $PSCommandPath -Parent) "nvlax_atref_helpers.ps1"
+if (-not (Test-Path -LiteralPath $atRefHelperPath)) {
+    throw "At-ref helper script not found: $atRefHelperPath"
+}
+try { Unblock-File -LiteralPath $atRefHelperPath -ErrorAction SilentlyContinue } catch { }
+. $atRefHelperPath
 
 function Get-FirstExistingColumnName {
     param(
@@ -823,13 +837,35 @@ try {
     }
     $rowsBeforeCount = $rows.Count
 
-    # Drop DS columns right after raw pull.
+    # Drop DS columns right after raw pull (and the empty legacy SUMMARY-RESULTS at-ref columns once the new tokens exist).
     $rawColumns = $rows[0].PSObject.Properties.Name
-    $keepRawColumns = $rawColumns | Where-Object { $_ -notlike "DS-IN-NA-GSDS_D_S::UPSVFPASSFLOW*" }
-    $droppedRawDsColumns = $rawColumns.Count - $keepRawColumns.Count
+    $atRefColumns = @(Get-AtRefColumnNames -Names $rawColumns)
+    $emptyLegacyAtRefColumns = @()
+    if ($atRefColumns.Count -gt 0) {
+        $emptyLegacyAtRefColumns = @(Get-EmptyLegacyAtRefColumnNames -Rows $rows -Names $rawColumns)
+    }
+    $keepRawColumns = $rawColumns | Where-Object {
+        ($_ -notlike "DS-IN-NA-GSDS_D_S::UPSVFPASSFLOW*") -and ($emptyLegacyAtRefColumns -notcontains $_)
+    }
+    $droppedRawDsColumns = $rawColumns.Count - @($keepRawColumns).Count
     if ($droppedRawDsColumns -gt 0) {
-        Write-Host "Dropping $droppedRawDsColumns DS-IN-NA-GSDS_D_S::UPSVFPASSFLOW* column(s) immediately after pull..."
+        Write-Host "Dropping $droppedRawDsColumns column(s) immediately after pull (DS-IN-NA-GSDS_D_S::UPSVFPASSFLOW*: $($droppedRawDsColumns - $emptyLegacyAtRefColumns.Count), empty legacy at-ref: $($emptyLegacyAtRefColumns.Count))..."
         $rows = $rows | Select-Object -Property $keepRawColumns
+    }
+
+    # Collapse '~' concatenated SICC/CDYN at-ref values to one numeric value per unit and column.
+    $atRefTargetColumns = @(@(Get-AtRefColumnNames -Names $keepRawColumns) + @(Get-LegacyAtRefColumnNames -Names $keepRawColumns))
+    if ($atRefTargetColumns.Count -gt 0) {
+        $atRefStats = Convert-AtRefColumnsToSingleValue -Rows @($rows) -Columns $atRefTargetColumns
+        Write-Host ("At-ref collapse: columns={0}, cells={1}, empty={2}, single={3}, collapsed={4}, mixed={5}, partialNonNumeric={6}, nonNumeric={7}, flaggedRows={8}" -f `
+            $atRefStats.Columns, $atRefStats.Cells, $atRefStats.Empty, $atRefStats.Scalar, $atRefStats.Collapsed, `
+            $atRefStats.MixedSegments, $atRefStats.PartialNonNumeric, $atRefStats.NonNumeric, $atRefStats.FlaggedRows)
+        if ($atRefStats.FlaggedRows -gt 0) {
+            Write-Warning ("{0} row(s) had non-degenerate or non-numeric at-ref values; see column '{1}'." -f $atRefStats.FlaggedRows, $script:AtRefCommentColumn)
+        }
+    }
+    else {
+        Write-Warning "No SICC/CDYN at-ref columns (VA-NA-*-SICC_TESTER_AT_REF / SICC_SYSTEM_AT_REF / CDYN_AT_REF) found in the AQUA output; check the AQUA report definition."
     }
 
     $columns = $rows[0].PSObject.Properties.Name

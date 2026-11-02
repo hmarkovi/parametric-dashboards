@@ -8,8 +8,9 @@ from pathlib import Path
 import colorsys
 
 import matplotlib
+from PIL import Image
 from pptx import Presentation
-from pptx.util import Inches
+from pptx.util import Inches, Pt
 
 matplotlib.use("Agg")
 
@@ -22,7 +23,8 @@ from matplotlib.patches import Patch
 DOMAIN_ALIASES = {
     "AT": "Atom",
     "ATOM": "Atom",
-    "CR": "Core",
+    "CR": "CR",
+    "CRFCT": "CR",
     "CORE": "Core",
     "CCF": "Ring",
     "CLR": "Ring",
@@ -88,7 +90,25 @@ def get_display_frequency_label(frequency_ghz: float) -> str:
 def resolve_domain_name(domain_token: str) -> str:
     token = domain_token.strip().upper()
     base_token = re.sub(r"\d+$", "", token)
+
+    if base_token in {"CR", "CRFCT", "CORE"}:
+        return "CR"
     return DOMAIN_ALIASES.get(base_token, base_token)
+
+
+def validate_merged_core_domain(points_df: pd.DataFrame) -> None:
+    raw_core_like = points_df[points_df["DomainToken"].fillna("").astype(str).str.upper().str.contains(r"CR|CORE", regex=True)]
+    if raw_core_like.empty:
+        return
+
+    merged_core_freqs = sorted({float(freq) for freq in points_df.loc[points_df["Domain"].astype(str).str.upper() == "CR", "FrequencyGHz"].dropna().unique()})
+    source_core_freqs = sorted({float(freq) for freq in raw_core_like["FrequencyGHz"].dropna().unique()})
+    missing = [freq for freq in source_core_freqs if freq not in merged_core_freqs]
+    if missing:
+        raise ValueError(
+            "Core domain merge validation failed: CR and CRFCT frequency data were not merged into one CR plot. "
+            f"Missing frequencies: {missing}"
+        )
 
 
 def module_token_from_text(setter: object, limiter_pattern: object) -> str:
@@ -304,7 +324,10 @@ def build_observations(input_csv: Path, selected_lot: str, selected_program: str
     points_df["LotFromFs"] = points_df["LotFromFs"].astype(str).str.strip()
     points_df["VisualID"] = points_df["VisualID"].astype(str).str.strip()
     points_df["Domain"] = points_df["Domain"].astype(str).str.strip()
+    points_df["DomainToken"] = points_df["DomainToken"].astype(str).str.strip()
     points_df["Module"] = points_df["Module"].astype(str).str.strip()
+
+    validate_merged_core_domain(points_df)
 
     return points_df, chosen_lot, chosen_program, lot_column, lot_names
 
@@ -381,8 +404,27 @@ def plot_domain(domain_df: pd.DataFrame, domain_name: str, lot_name: str, output
     if not group_records:
         raise ValueError(f"Domain {domain_name} has no plottable DTS groups.")
 
-    group_records.sort(key=lambda item: (item["corner"].upper() != "FMIN", item["corner"], item["frequency_ghz"], module_sort_order(item["module"]), item["module"]))
-    base_corner_colors = corner_color_map([str(record["corner"]) for record in group_records])
+    # A corner name can map to several frequencies when sibling tokens (e.g. CR + CRFCT) are merged.
+    # In that case every corner/frequency pair gets its own colour key and the plot is ordered by frequency.
+    freqs_per_corner: dict[str, set[float]] = {}
+    for record in group_records:
+        freqs_per_corner.setdefault(str(record["corner"]), set()).add(record["frequency_ghz"])
+    has_conflict = any(len(freqs) > 1 for freqs in freqs_per_corner.values())
+    for record in group_records:
+        corner_text = str(record["corner"])
+        if len(freqs_per_corner[corner_text]) > 1:
+            record["color_key"] = f"{corner_text} ({record['frequency_label']} GHz)"
+        else:
+            record["color_key"] = corner_text
+
+    # Frequency is always the primary sort key; corner name is only a tie-breaker.
+    group_records.sort(key=lambda item: (item["frequency_ghz"], corner_order_key(str(item["corner"])), module_sort_order(item["module"]), item["module"]))
+    ordered_color_keys: list[str] = []
+    for record in group_records:
+        if record["color_key"] not in ordered_color_keys:
+            ordered_color_keys.append(record["color_key"])
+    palette = plt.get_cmap("tab10")
+    base_corner_colors = {key: tuple(palette(i % 10)) for i, key in enumerate(ordered_color_keys)}
 
     width = max(16.0, min(30.0, 0.8 * len(group_records) + 10.0))
     height = 9.0 if len(group_records) <= 12 else 11.0
@@ -422,7 +464,7 @@ def plot_domain(domain_df: pd.DataFrame, domain_name: str, lot_name: str, output
             }
         )
 
-        point_color = module_color_for_corner(record["corner"], record["module"], base_corner_colors)
+        point_color = module_color_for_corner(record["color_key"], record["module"], base_corner_colors)
         x_values = index + jitter_rng.normal(0.0, 0.075, size=values.size)
         ax.scatter(x_values, values, s=14, alpha=0.45, color=point_color, edgecolors="none")
 
@@ -436,7 +478,7 @@ def plot_domain(domain_df: pd.DataFrame, domain_name: str, lot_name: str, output
     )
 
     for index, patch in enumerate(box["boxes"]):
-        patch_color = module_color_for_corner(group_records[index]["corner"], group_records[index]["module"], base_corner_colors)
+        patch_color = module_color_for_corner(group_records[index]["color_key"], group_records[index]["module"], base_corner_colors)
         patch.set_facecolor(patch_color)
         patch.set_alpha(0.25)
         patch.set_edgecolor("#39424e")
@@ -455,8 +497,8 @@ def plot_domain(domain_df: pd.DataFrame, domain_name: str, lot_name: str, output
         median_line.set_linewidth(1.8)
 
     corner_handles = [
-        Patch(facecolor=module_color_for_corner(corner, "FUN", base_corner_colors), edgecolor="none", label=str(corner))
-        for corner in sorted(set(str(record["corner"]) for record in group_records), key=corner_order_key)
+        Patch(facecolor=module_color_for_corner(key, "FUN", base_corner_colors), edgecolor="none", label=key)
+        for key in ordered_color_keys
     ]
     if corner_handles:
         legend = ax.legend(handles=corner_handles, title="Corner color rule", loc="upper right", frameon=False, fontsize=8, title_fontsize=9)
@@ -490,7 +532,7 @@ def plot_domain(domain_df: pd.DataFrame, domain_name: str, lot_name: str, output
     )
 
     subtitle = f"Lot {lot_name} · Domain {domain_name} · Box+Jitter · {domain_df['VisualID'].nunique()} units · {len(domain_df):,} observations"
-    ax.set_title("Test temperature dist. per corner and test", fontsize=17, fontweight="bold", pad=14)
+    ax.set_title("Test temperature dist. per corner and test", fontsize=17, fontweight="bold", pad=34)
     ax.text(0.0, 1.02, subtitle, transform=ax.transAxes, fontsize=10.5, color="#546170", ha="left", va="bottom")
     ax.set_ylabel("DTS temperature (°C)", fontsize=12)
     ax.set_xlabel("Corner → Frequency → Module", fontsize=12)
@@ -517,19 +559,32 @@ def plot_domain(domain_df: pd.DataFrame, domain_name: str, lot_name: str, output
     }
 
 
-def build_program_ppt(output_dir: Path, image_paths: list[Path], program_name: str) -> Path:
+def build_program_ppt(output_dir: Path, image_specs: list[tuple[str, Path]], program_name: str) -> Path:
     ppt_path = output_dir / f"dts_temperature_{safe_name(program_name)}_deck.pptx"
     prs = Presentation()
     prs.slide_width = Inches(13.333)
     prs.slide_height = Inches(7.5)
 
-    for image_path in image_paths:
+    for domain_name, image_path in image_specs:
         slide = prs.slides.add_slide(prs.slide_layouts[6])
-        left = Inches(0.15)
-        top = Inches(0.1)
-        width = Inches(12.9)
-        height = Inches(7.1)
-        slide.shapes.add_picture(str(image_path), left, top, width, height)
+        title_box = slide.shapes.add_textbox(Inches(0.2), Inches(0.05), Inches(12.5), Inches(0.42))
+        title_frame = title_box.text_frame
+        title_frame.word_wrap = True
+        title_frame.text = f"{domain_name} DTS temperature distribution"
+        title_paragraph = title_frame.paragraphs[0]
+        title_paragraph.alignment = 1
+        for run in title_paragraph.runs:
+            run.font.bold = True
+            run.font.size = Pt(18)
+
+        max_width, max_height = 12.9, 6.8
+        with Image.open(image_path) as img:
+            img_w, img_h = img.size
+        scale = min(max_width / img_w, max_height / img_h)
+        width_in, height_in = img_w * scale, img_h * scale
+        left = Inches((13.333 - width_in) / 2.0)
+        top = Inches(0.55)
+        slide.shapes.add_picture(str(image_path), left, top, Inches(width_in), Inches(height_in))
 
     prs.save(str(ppt_path))
     return ppt_path
@@ -555,16 +610,16 @@ def main() -> int:
     summary_df.to_csv(summary_path, index=False)
 
     plot_rows: list[dict[str, object]] = []
-    plot_paths: list[Path] = []
+    plot_specs: list[tuple[str, Path]] = []
     for domain_name, domain_df in points_df.groupby("Domain", sort=False):
         domain_output = output_dir / f"dts_temperature_{safe_name(chosen_lot)}_{safe_name(domain_name)}.png"
         plot_rows.append(plot_domain(domain_df, domain_name, chosen_lot, domain_output))
-        plot_paths.append(domain_output)
+        plot_specs.append((domain_name, domain_output))
 
     plot_index_path = output_dir / f"dts_temperature_plot_index_{safe_name(chosen_lot)}.csv"
     pd.DataFrame(plot_rows).to_csv(plot_index_path, index=False)
 
-    ppt_path = build_program_ppt(output_dir, plot_paths, chosen_program or "dts_analysis")
+    ppt_path = build_program_ppt(output_dir, plot_specs, chosen_program or "dts_analysis")
 
     with manifest_path.open("w", encoding="utf-8") as handle:
         handle.write(f"InputCsv={input_csv}\n")

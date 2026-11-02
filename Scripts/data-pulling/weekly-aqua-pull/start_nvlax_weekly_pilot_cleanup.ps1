@@ -7,7 +7,9 @@ param(
     [int]$MaxWorkWeeks = 3,
     [string]$RetainedFolderName = "By-Class-TP-final",
     [string]$ManifestFolderName = "pilot_cleanup_manifests",
-    [switch]$DeleteOriginals
+    [switch]$DeleteOriginals,
+    [switch]$SkipValidation,
+    [string]$PythonExe = ""
 )
 
 Set-StrictMode -Version Latest
@@ -30,4 +32,6 @@ Write-Host "WorkWeeks: $($WorkWeeks -join ', ')"
     -MaxWorkWeeks $MaxWorkWeeks `
     -RetainedFolderName $RetainedFolderName `
     -ManifestFolderName $ManifestFolderName `
-    -DeleteOriginals:$DeleteOriginals
+    -DeleteOriginals:$DeleteOriginals `
+    -SkipValidation:$SkipValidation `
+    -PythonExe $PythonExe

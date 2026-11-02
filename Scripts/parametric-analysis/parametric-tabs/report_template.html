@@ -1,0 +1,1092 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>NVLAX Parametric Tabs - Overview / Vmin / SICC / DTS</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;margin:0;color:#1d2733;background:#f5f7fa}
+  header{background:#0b3a6f;color:#fff;padding:10px 18px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header label{font-size:13px}
+  select,input[type=checkbox]{font-size:13px}
+  select{padding:3px 6px;max-width:520px}
+  nav{display:flex;background:#e3e9f1;border-bottom:1px solid #b9c4d3}
+  nav button{border:0;background:none;padding:10px 22px;font-size:14px;cursor:pointer;border-bottom:3px solid transparent}
+  nav button.on{background:#fff;border-bottom-color:#0b6fd6;font-weight:600}
+  .panel{display:none;padding:14px 18px;background:#fff}
+  .panel.on{display:block}
+  .ctl{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-bottom:8px;font-size:13px}
+  .info{font-size:12px;color:#44546a;margin:4px 0 8px}
+  .warn{color:#a15c00}
+  .chart{overflow-x:auto;border:1px solid #d5dde8;margin:8px 0;background:#fff}
+  table{border-collapse:collapse;font-size:12px;margin:8px 0}
+  th,td{border:1px solid #ccd5e1;padding:3px 7px;text-align:right}
+  th{background:#eef2f7;position:sticky;top:0}
+  td.l,th.l{text-align:left}
+  .tbl{max-height:320px;overflow:auto;display:inline-block;max-width:100%}
+  h3{font-size:14px;margin:14px 0 4px}
+  footer{padding:10px 18px;font-size:12px;color:#44546a;background:#eef2f7;border-top:1px solid #ccd5e1}
+  details{margin:10px 18px}
+  summary{cursor:pointer;font-weight:600;font-size:13px}
+  .muted{color:#8393a8}
+  svg text{font-family:Segoe UI,Arial,sans-serif}
+  .pair{display:flex;gap:14px;flex-wrap:wrap;align-items:flex-start}
+  .pair>div{min-width:0}
+  header details.ms{margin:0;position:relative;font-size:13px;display:inline-block;vertical-align:middle}
+  header details.ms>summary{cursor:pointer;background:#fff;color:#1d2733;padding:3px 10px;border:1px solid #8393a8;font-weight:400;min-width:260px;max-width:560px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ms-pop{position:absolute;z-index:30;left:0;top:100%;background:#fff;color:#1d2733;border:1px solid #8393a8;padding:6px 10px;max-height:380px;overflow:auto;min-width:460px;box-shadow:0 3px 10px rgba(0,0,0,.25)}
+  .ms-pop .acts{display:flex;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #ccd5e1}
+  .ms-pop .acts button{font-size:12px;cursor:pointer}
+  .ms-pop label{display:flex;gap:6px;align-items:center;padding:2px 0;white-space:nowrap}
+  .facets{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
+  .facets>div{border:1px solid #d5dde8;background:#fff}
+  .leg{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;margin:4px 0 8px}
+  .leg span.sw{display:inline-block;width:11px;height:11px;margin-right:4px;vertical-align:-1px}
+  tr.grp td{background:#dfe8f4;font-weight:600;text-align:left;position:sticky;top:0}
+  .vbar{position:sticky;top:0;z-index:20;background:#eef4fb;border:1px solid #b9c4d3;padding:8px 12px;margin:-4px 0 8px}
+  .vbar .vsep{color:#44546a;font-weight:600;border-left:2px solid #b9c4d3;padding-left:14px}
+  .dpanel{border:1px solid #d5dde8;padding:6px;background:#fff}
+  .dpanel h4{margin:2px 0 4px;font-size:13px}
+</style>
+</head>
+<body>
+<header>
+  <h1>NVLAX Parametric Analysis</h1>
+  <label>Class TP: <details class="ms" id="tp-ms"><summary id="tp-sum"></summary><div class="ms-pop" id="tp-pop"></div></details></label>
+</header>
+<nav>
+  <button data-t="ovw" class="on">Overview</button>
+  <button data-t="vmin">Vmin</button>
+  <button data-t="sicc">SICC</button>
+  <button data-t="dts">DTS</button>
+</nav>
+
+<section id="p-ovw" class="panel on">
+  <h3>1. Good units in the database</h3>
+  <div class="info" id="o-uinfo"></div>
+  <div class="tbl" id="o-units"></div>
+  <h3>2. Median UPM per test program</h3>
+  <div class="info" id="o-minfo"></div>
+  <div class="tbl" id="o-upm"></div>
+  <div class="leg" id="o-dleg"></div>
+  <div class="facets" id="o-dist"></div>
+  <h3>3. Capability: SICC vs UPM, with targets</h3>
+  <div class="ctl">
+    <label>Domain: <select id="o-cdom"></select></label>
+    <label>Measure: <select id="o-cmeas"></select></label>
+    <label><input type="checkbox" id="o-clog" checked> log Y</label>
+  </div>
+  <div class="info" id="o-cinfo"></div>
+  <div class="chart" id="o-cap"></div>
+  <div class="tbl" id="o-cq"></div>
+  <h3>4. Flow matrix (max frequency in GHz per program, domain, flow and corner)</h3>
+  <div class="info" id="o-finfo"></div>
+  <div class="tbl" id="o-flow" style="max-height:560px"></div>
+</section>
+
+<section id="p-vmin" class="panel">
+  <div class="ctl vbar">
+    <b>Filters (every pane below):</b>
+    <label>Domain: <select id="v-dom"></select></label>
+    <label>Core: <select id="v-core"></select></label>
+    <label>Frequency for scatter / distribution (GHz): <select id="v-f"></select></label>
+    <span class="vsep">Limiter table:</span>
+    <label>Corner: <select id="l-cor"></select></label>
+    <label>Module: <select id="l-mod"></select></label>
+    <label>Plist: <select id="l-pl"></select></label>
+    <label>Min count: <input type="number" id="l-min" value="1" min="1" style="width:60px"></label>
+  </div>
+  <div class="info" id="v-scope" style="font-size:13px;color:#0b3a6f"></div>
+  <div class="info" id="v-info"></div>
+  <h3>VF curve: Vmin at UPM target</h3>
+  <div class="chart" id="v-vf"></div>
+  <div class="pair">
+    <div><h3>Vmin vs UPM</h3><div class="chart" id="v-sc"></div></div>
+    <div><h3>Vmin distribution (selected frequency / core)</h3><div class="chart" id="v-dist"></div><div class="tbl" id="v-dstat"></div></div>
+  </div>
+  <h3>Fit table (per test program)</h3>
+  <div class="tbl" id="v-tbl"></div>
+
+  <h3>Module Pareto: % limiting module vs corner</h3>
+  <div class="info" id="m-info"></div>
+  <div id="m-leg" class="leg"></div>
+  <div id="m-grid" class="facets"></div>
+
+  <h3>Limiting Pattern by Plist</h3>
+  <div class="info" id="l-info"></div>
+  <div class="tbl" id="l-tbl" style="max-height:560px"></div>
+</section>
+
+<section id="p-sicc" class="panel">
+  <div class="ctl">
+    <label>Family: <select id="s-fam"></select></label>
+    <label>Measure: <select id="s-meas"></select></label>
+    <label><input type="checkbox" id="s-log" checked> log Y</label>
+    <label id="s-toklbl">Fit token: <select id="s-tok"></select></label>
+  </div>
+  <div class="info" id="s-info"></div>
+  <h3>Normalized SICC analysis per domain</h3>
+  <div class="info" id="s-presisrc"></div>
+  <div class="tbl" id="s-tgt"></div>
+  <div class="info" id="s-unres"></div>
+  <div id="s-s2tbox" style="display:none">
+    <h3>S2T multiplier (System at ref / Tester at ref, per domain and test program)</h3>
+    <div class="info" id="s-s2tinfo"></div>
+    <div class="tbl" id="s-s2t"></div>
+  </div>
+  <h3>SICC distribution</h3>
+  <div class="ctl" id="s-subctl" style="display:none"><label>Sub domain: <select id="s-sub"></select></label></div>
+  <div class="chart" id="s-box"></div>
+  <h3>SICC vs UPM (log-linear fit, evaluated at UPM target)</h3>
+  <div class="chart" id="s-sc"></div>
+  <h3>Summary</h3>
+  <div class="tbl" id="s-tbl"></div>
+</section>
+
+<section id="p-dts" class="panel">
+  <div class="ctl">
+    <label>Domain: <select id="d-dom"></select></label>
+  </div>
+  <div class="info" id="d-info"></div>
+  <div id="d-box"></div>
+  <h3>Buckets above limit (median &gt; 100 C or max &gt; 110 C)</h3>
+  <div class="tbl" id="d-viol"></div>
+  <h3>Bucket summary</h3>
+  <div class="tbl" id="d-tbl"></div>
+</section>
+
+<details id="unm"><summary>Unmapped / ambiguous tokens</summary><div class="tbl" id="unm-t"></div></details>
+<footer id="foot"></footer>
+
+<script>
+const D = /*__DATA__*/null;
+const NS = 'http://www.w3.org/2000/svg';
+const $ = s => document.querySelector(s);
+const PAL = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'];
+let SELS = new Set();   // selected program indices (numbers)
+const inSel = p => SELS.has(p);
+const fmt = (v, d = 3) => v === null || v === undefined ? '' : Number(v).toFixed(d);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text !== undefined) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function fillSelect(id, items, keep) {
+  const s = $(id), prev = s.value;
+  s.innerHTML = items.map(i => `<option value="${esc(i.v)}">${esc(i.t)}</option>`).join('');
+  if (keep && items.some(i => String(i.v) === prev)) s.value = prev;
+}
+function table(rows, cols) {
+  if (!rows.length) return '<span class="muted">No data for this selection.</span>';
+  let h = '<table><tr>' + cols.map(c => `<th class="${c.l ? 'l' : ''}">${esc(c.h)}</th>`).join('') + '</tr>';
+  for (const r of rows) {
+    if (r.hdr !== undefined) { h += `<tr class="grp"><td colspan="${cols.length}">${esc(r.hdr)}</td></tr>`; continue; }
+    h += '<tr>' + cols.map(c => `<td class="${c.l ? 'l' : ''}">${c.f ? c.f(r) : esc(r[c.k] ?? '')}</td>`).join('') + '</tr>';
+  }
+  return h + '</table>';
+}
+const selProgs = () => [...SELS].sort((a, b) => a - b);
+/* Rows partitioned per selected test program (sub-header row each), plus a pooled block when more than one program is selected.
+   fn(p) gets the program index (or null for pooled) and returns rows; extra(p) optionally appends text to the sub-header. */
+function partition(fn, pooled = true, extra) {
+  const out = [];
+  const add = (p, title) => {
+    const r = fn(p);
+    if (!r.length) return;
+    const x = extra ? extra(p) : '';
+    out.push({ hdr: 'Test program: ' + title + (x ? '  |  ' + x : '') });
+    out.push(...r);
+  };
+  selProgs().forEach(p => add(p, `${D.programs[p].name} [${D.programs[p].tag}]`));
+  if (pooled && SELS.size > 1) add(null, 'All selected programs (pooled)');
+  return out;
+}
+const progFilter = p => p === null || p === undefined ? inSel : (q => q === p);
+function quant(sorted, q) {
+  if (!sorted.length) return NaN;
+  const pos = (sorted.length - 1) * q, lo = Math.floor(pos), hi = Math.ceil(pos);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+}
+function niceTicks(lo, hi, n = 6) {
+  if (!(hi > lo)) { hi = lo + 1; }
+  const raw = (hi - lo) / n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const out = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toPrecision(10));
+  return out;
+}
+function logTicks(lo, hi) {
+  const out = [];
+  for (let k = Math.floor(Math.log10(lo)) - 1; k <= Math.ceil(Math.log10(hi)); k++)
+    for (const m of [1, 2, 5]) { const v = m * Math.pow(10, k); if (v >= lo && v <= hi) out.push(v); }
+  if (out.length < 4) {
+    out.length = 0;
+    for (let k = Math.floor(Math.log10(lo)) - 1; k <= Math.ceil(Math.log10(hi)); k++)
+      for (let m = 1; m <= 9; m++) { const v = m * Math.pow(10, k); if (v >= lo && v <= hi) out.push(v); }
+  }
+  return out;
+}
+const fmtN = v => isFinite(v) ? String(+Number(v).toPrecision(5)) : '';
+/* Hover cursor: crosshair + XY readout anywhere inside the plot area.
+   o.inv(mx,my) -> {dx,dy} data coordinates; o.hover(ctx) -> {extra:[lines], snap:[px,py], replace:bool} | null */
+function cursorOn(svg, W, H, M, o) {
+  let g = null;
+  const mk = () => {
+    g = el('g', { 'pointer-events': 'none' });
+    g.vl = el('line', { stroke: '#555', 'stroke-dasharray': '3,3' }, g);
+    g.hl = el('line', { stroke: '#555', 'stroke-dasharray': '3,3' }, g);
+    g.dot = el('circle', { r: 6, fill: 'none', stroke: '#000', 'stroke-width': 1.5 }, g);
+    g.box = el('rect', { fill: '#fffbe6', stroke: '#8393a8', 'fill-opacity': 0.95 }, g);
+    g.txt = el('text', { 'font-size': 11, fill: '#111' }, g);
+  };
+  const hide = () => { if (g && g.parentNode) g.parentNode.removeChild(g); };
+  svg.addEventListener('mouseleave', hide);
+  svg.addEventListener('mousemove', e => {
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return;
+    const pt = svg.createSVGPoint(); pt.x = e.clientX; pt.y = e.clientY;
+    const p = pt.matrixTransform(ctm.inverse()), mx = p.x, my = p.y;
+    if (mx < M.l || mx > W - M.r || my < M.t || my > H - M.b) { hide(); return; }
+    if (!g) mk();
+    svg.appendChild(g);
+    const d = o.inv(mx, my), h = o.hover ? o.hover({ mx, my, dx: d.dx, dy: d.dy }) : null;
+    const lines = h && h.extra ? h.extra.slice() : [];
+    if (!(h && h.replace)) {
+      if (!o.xcat) lines.push(`${o.xlab || 'X'}: ${fmtN(d.dx)}`);
+      if (!o.noy) lines.push(`${o.ylab || 'Y'}: ${fmtN(d.dy)}`);
+    }
+    const cx = h && h.snap ? h.snap[0] : mx, cy = h && h.snap ? h.snap[1] : my;
+    g.vl.setAttribute('x1', cx); g.vl.setAttribute('x2', cx); g.vl.setAttribute('y1', M.t); g.vl.setAttribute('y2', H - M.b);
+    g.hl.setAttribute('y1', cy); g.hl.setAttribute('y2', cy); g.hl.setAttribute('x1', M.l); g.hl.setAttribute('x2', W - M.r);
+    g.dot.setAttribute('cx', cx); g.dot.setAttribute('cy', cy); g.dot.setAttribute('visibility', h && h.snap ? 'visible' : 'hidden');
+    g.txt.textContent = '';
+    const w = Math.max(...lines.map(s => s.length)) * 6.1 + 12, ht = lines.length * 14 + 6;
+    let bx = mx + 14, by = my + 14;
+    if (bx + w > W - 2) bx = mx - 14 - w;
+    if (by + ht > H - 2) by = my - 14 - ht;
+    g.box.setAttribute('x', bx); g.box.setAttribute('y', by); g.box.setAttribute('width', w); g.box.setAttribute('height', ht);
+    lines.forEach((s, i) => { const t = el('tspan', { x: bx + 6, y: by + 15 + i * 14 }, g.txt, s); });
+  });
+}
+function frame(container, W, H, M, xr, yr, o) {
+  container.innerHTML = '';
+  const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, container);
+  const ty = o.logy ? Math.log10 : (v => v);
+  const x = v => M.l + (v - xr[0]) / (xr[1] - xr[0]) * (W - M.l - M.r);
+  const y = v => H - M.b - (ty(v) - ty(yr[0])) / (ty(yr[1]) - ty(yr[0])) * (H - M.t - M.b);
+  const yt = o.logy ? logTicks(yr[0], yr[1]) : niceTicks(yr[0], yr[1]);
+  for (const t of (o.noyticks ? [] : yt)) {
+    el('line', { x1: M.l, x2: W - M.r, y1: y(t), y2: y(t), stroke: '#e3e8ef' }, svg);
+    el('text', { x: M.l - 6, y: y(t) + 4, 'text-anchor': 'end', 'font-size': 11, fill: '#44546a' }, svg, +t.toPrecision(4));
+  }
+  el('rect', { x: M.l, y: M.t, width: W - M.l - M.r, height: H - M.t - M.b, fill: 'none', stroke: '#8393a8' }, svg);
+  const cp = el('clipPath', { id: 'clip' + (frame.n = (frame.n || 0) + 1) }, svg);
+  el('rect', { x: M.l, y: M.t, width: W - M.l - M.r, height: H - M.t - M.b }, cp);
+  const clip = 'url(#clip' + frame.n + ')';
+  if (o.ylab) el('text', { transform: `translate(14,${(M.t + H - M.b) / 2}) rotate(-90)`, 'text-anchor': 'middle', 'font-size': 12 }, svg, o.ylab);
+  if (o.xlab) el('text', { x: (M.l + W - M.r) / 2, y: H - 6, 'text-anchor': 'middle', 'font-size': 12 }, svg, o.xlab);
+  const f = { svg, x, y, clip };
+  const xi = mx => xr[0] + (mx - M.l) / (W - M.l - M.r) * (xr[1] - xr[0]);
+  const yi = my => {
+    const t = (H - M.b - my) / (H - M.t - M.b);
+    return o.logy ? Math.pow(10, Math.log10(yr[0]) + t * (Math.log10(yr[1]) - Math.log10(yr[0]))) : yr[0] + t * (yr[1] - yr[0]);
+  };
+  cursorOn(svg, W, H, M, { inv: (mx, my) => ({ dx: xi(mx), dy: yi(my) }), xlab: o.xlab, ylab: o.ylab, xcat: o.xcat, noy: o.noy, hover: o.hover ? c => o.hover(f, c) : null });
+  return f;
+}
+function noData(container, msg) { container.innerHTML = `<div class="info" style="padding:12px">${esc(msg)}</div>`; }
+function legend(svg, items, x0, y0) {
+  items.forEach((it, i) => {
+    if (it.dash) el('line', { x1: x0, x2: x0 + 10, y1: y0 + i * 15 - 4, y2: y0 + i * 15 - 4, stroke: it.color, 'stroke-width': 2, 'stroke-dasharray': '4,2' }, svg);
+    else el('rect', { x: x0, y: y0 + i * 15 - 9, width: 10, height: 10, fill: it.color }, svg);
+    el('text', { x: x0 + 14, y: y0 + i * 15, 'font-size': 11 }, svg, it.label);
+  });
+}
+
+/* least squares y = a*x + b; mirrors the generator (needs minFit points and a non-degenerate x range) */
+function linfitJS(xs, ys) {
+  const n = xs.length;
+  if (n < D.params.minFit) return null;
+  const mx = xs.reduce((a, v) => a + v, 0) / n, my = ys.reduce((a, v) => a + v, 0) / n;
+  let sxx = 0, sxy = 0, syy = 0, lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - mx, dy = ys[i] - my;
+    sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+    if (xs[i] < lo) lo = xs[i];
+    if (xs[i] > hi) hi = xs[i];
+  }
+  if (hi - lo < 1e-9) return null;
+  const a = sxy / sxx, b = my - a * mx;
+  let sse = 0;
+  for (let i = 0; i < n; i++) { const e = ys[i] - (a * xs[i] + b); sse += e * e; }
+  return { a, b, r2: syy > 0 ? 1 - sse / syy : NaN, lo, hi };
+}
+const sortedNum = v => v.slice().sort((a, b) => a - b);
+const median = v => quant(sortedNum(v), .5);
+
+function lineChart(container, series, o) {
+  const all = series.flatMap(s => s.pts);
+  if (!all.length) return noData(container, 'No data for this selection.');
+  const xs = all.map(p => p[0]), ys = all.map(p => p[1]);
+  const xlo = Math.min(...xs), xhi = Math.max(...xs), ylo = Math.min(...ys), yhi = Math.max(...ys);
+  const px = (xhi - xlo) * 0.06 || 0.1, py = (yhi - ylo) * 0.1 || 0.02;
+  const W = 900, H = 340, M = { l: 62, r: 150, t: 14, b: 40 };
+  const sorted = series.map(s => ({ s, pts: s.pts.slice().sort((a, b) => a[0] - b[0]) }));
+  const xl = o.xlab || 'X', yl = o.ylab || 'Y';
+  const hover = (f, c) => {
+    let best = null;
+    for (const { s, pts } of sorted) {
+      if (s.nomark) continue;
+      for (const p of pts) {
+        const d = Math.hypot(f.x(p[0]) - c.mx, f.y(p[1]) - c.my);
+        if (d < 12 && (!best || d < best.d)) best = { d, s, p };
+      }
+    }
+    if (best) {
+      const notes = [best.p[2] ? 'median of distribution' : '', best.p[3] ? 'UPM target extrapolated' : ''].filter(Boolean).join(', ');
+      return { snap: [f.x(best.p[0]), f.y(best.p[1])], replace: true,
+        extra: [best.s.name, `${xl}: ${fmtN(best.p[0])}`, `${yl}: ${fmtN(best.p[1])}`, ...(notes ? [notes] : [])] };
+    }
+    let cb = null;
+    for (const { s, pts } of sorted)
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        if (c.dx < a[0] || c.dx > b[0] || b[0] === a[0]) continue;
+        const yv = a[1] + (b[1] - a[1]) * (c.dx - a[0]) / (b[0] - a[0]), d = Math.abs(f.y(yv) - c.my);
+        if (d < 8 && (!cb || d < cb.d)) cb = { d, s, yv };
+      }
+    if (cb) return { snap: [c.mx, f.y(cb.yv)], replace: true, extra: [cb.s.name + ' (curve)', `${xl}: ${fmtN(c.dx)}`, `${yl}: ${fmtN(cb.yv)}`] };
+    return null;
+  };
+  const f = frame(container, W, H, M, [xlo - px, xhi + px], [ylo - py, yhi + py], { ...o, hover });
+  for (const t of niceTicks(xlo - px, xhi + px, 8))
+    el('text', { x: f.x(t), y: H - M.b + 15, 'text-anchor': 'middle', 'font-size': 11, fill: '#44546a' }, f.svg, t);
+  series.forEach(s => {
+    const pts = s.pts.slice().sort((a, b) => a[0] - b[0]);
+    el('polyline', { points: pts.map(p => f.x(p[0]) + ',' + f.y(p[1])).join(' '), fill: 'none', stroke: s.color, 'stroke-width': s.dash ? 2 : 1.5,
+      ...(s.dash ? { 'stroke-dasharray': '7,4' } : {}) }, f.svg);
+    if (s.nomark) return;
+    pts.forEach(p => {
+      el('circle', { cx: f.x(p[0]), cy: f.y(p[1]), r: 3.5, fill: p[2] ? '#fff' : s.color, stroke: s.color, 'stroke-width': 1.5 }, f.svg);
+      if (p[3]) el('circle', { cx: f.x(p[0]), cy: f.y(p[1]), r: 7, fill: 'none', stroke: '#c0392b', 'stroke-dasharray': '2,2' }, f.svg);
+    });
+  });
+  legend(f.svg, series.map(s => ({ color: s.color, label: s.name, dash: s.dash })), W - M.r + 10, M.t + 12);
+}
+
+function scatterChart(container, pts, o) {
+  if (!pts.length) return noData(container, 'No data for this selection.');
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  let xlo = Math.min(...xs), xhi = Math.max(...xs);
+  if (o.vline !== undefined) { xlo = Math.min(xlo, o.vline); xhi = Math.max(xhi, o.vline); }
+  let ylo = Math.min(...ys), yhi = Math.max(...ys);
+  if (o.hline) { ylo = Math.min(ylo, o.hline.y); yhi = Math.max(yhi, o.hline.y); }
+  const px = (xhi - xlo) * 0.05 || 0.01;
+  if (o.logy) { ylo /= 1.15; yhi *= 1.15; } else { const py = (yhi - ylo) * 0.08 || 0.01; ylo -= py; yhi += py; }
+  const W = 900, H = 360, M = { l: 62, r: 160, t: 14, b: 40 };
+  const xl = o.xlab || 'X', yl = o.ylab || 'Y';
+  const curves = o.curves || (o.curve ? [{ fn: o.curve, color: '#000', name: 'fit' }] : []);
+  const hover = (f, c) => {
+    let best = null;
+    for (const p of pts) {
+      const d = Math.hypot(f.x(p.x) - c.mx, f.y(p.y) - c.my);
+      if (d < 8 && (!best || d < best.d)) best = { d, p };
+    }
+    if (best) return { snap: [f.x(best.p.x), f.y(best.p.y)], replace: true,
+      extra: [D.programs[best.p.p].name, `${xl}: ${fmtN(best.p.x)}`, `${yl}: ${fmtN(best.p.y)}`] };
+    let bc = null;
+    for (const cv of curves) {
+      const yc = cv.fn(c.dx), d = Math.abs(f.y(yc) - c.my);
+      if (isFinite(yc) && (!o.logy || yc > 0) && d < 7 && (!bc || d < bc.d)) bc = { d, yc, cv };
+    }
+    if (bc) return { snap: [c.mx, f.y(bc.yc)], replace: true, extra: [bc.cv.name, `${xl}: ${fmtN(c.dx)}`, `${yl}: ${fmtN(bc.yc)}`] };
+    return null;
+  };
+  const f = frame(container, W, H, M, [xlo - px, xhi + px], [ylo, yhi], { ...o, hover });
+  for (const t of niceTicks(xlo - px, xhi + px, 8))
+    el('text', { x: f.x(t), y: H - M.b + 15, 'text-anchor': 'middle', 'font-size': 11, fill: '#44546a' }, f.svg, t);
+  if (o.vline !== undefined) {
+    el('line', { x1: f.x(o.vline), x2: f.x(o.vline), y1: M.t, y2: H - M.b, stroke: '#c0392b', 'stroke-dasharray': '5,3' }, f.svg);
+    el('text', { x: f.x(o.vline) + 4, y: M.t + 12, 'font-size': 11, fill: '#c0392b' }, f.svg, 'target ' + o.vline);
+  }
+  const used = new Set();
+  if (o.hline) {
+    el('line', { x1: M.l, x2: W - M.r, y1: f.y(o.hline.y), y2: f.y(o.hline.y), stroke: '#00a651', 'stroke-dasharray': '6,3', 'stroke-width': 1.4 }, f.svg);
+    el('text', { x: W - M.r - 4, y: f.y(o.hline.y) - 4, 'text-anchor': 'end', 'font-size': 11, fill: '#00a651' }, f.svg, o.hline.label);
+  }
+  pts.forEach(p => { used.add(p.p); el('circle', { cx: f.x(p.x), cy: f.y(p.y), r: 2.6, fill: PAL[p.p % 10], 'fill-opacity': 0.6 }, f.svg); });
+  curves.forEach(cv => {
+    const a = xlo - px, b = xhi + px, path = [];
+    for (let i = 0; i <= 60; i++) { const xv = a + (b - a) * i / 60, yv = cv.fn(xv); if (isFinite(yv) && (!o.logy || yv > 0)) path.push(f.x(xv) + ',' + f.y(yv)); }
+    el('polyline', { points: path.join(' '), fill: 'none', stroke: '#fff', 'stroke-width': 3.6, 'clip-path': f.clip }, f.svg);
+    el('polyline', { points: path.join(' '), fill: 'none', stroke: cv.color, 'stroke-width': 1.8, 'clip-path': f.clip }, f.svg);
+  });
+  legend(f.svg, [...used].sort((a, b) => a - b).map(i => ({ color: PAL[i % 10], label: D.programs[i].name.replace(/^NVLAX62A0/, '') })), W - M.r + 10, M.t + 12);
+}
+
+function boxStrip(container, cats, o) {
+  cats = cats.filter(c => c.vals.length);
+  if (!cats.length) return noData(container, 'No data for this selection.');
+  const all = cats.flatMap(c => c.vals);
+  let ylo = Math.min(...all), yhi = Math.max(...all);
+  for (const h of (o.hlines || [])) { ylo = Math.min(ylo, h.y); yhi = Math.max(yhi, h.y); }
+  if (o.logy) { ylo /= 1.2; yhi *= 1.2; } else { const py = (yhi - ylo) * 0.06 || 1; ylo -= py; yhi += py; }
+  const cw = o.cw || 30, M = { l: 62, r: (o.legend || o.hlines) ? 140 : 20, t: 14, b: o.bm || 130 };
+  const W = Math.max(o.minw || 700, M.l + M.r + cats.length * cw), H = 340 + M.b - 40;
+  const hover = (f, c) => {
+    const k = Math.floor(c.dx), ct = cats[k];
+    if (!ct) return null;
+    const st = ct._st ??= (() => { const v = sortedNum(ct.vals); return { n: v.length, min: v[0], q1: quant(v, .25), med: quant(v, .5), q3: quant(v, .75), max: v[v.length - 1] }; })();
+    return { extra: [ct.label, `n ${st.n}   min ${fmtN(st.min)}   max ${fmtN(st.max)}`, `Q1 ${fmtN(st.q1)}   median ${fmtN(st.med)}   Q3 ${fmtN(st.q3)}`] };
+  };
+  const f = frame(container, W, H, M, [0, cats.length], [ylo, yhi], { ...o, xcat: true, hover });
+  for (const h of (o.hlines || [])) {
+    el('line', { x1: M.l, x2: W - M.r, y1: f.y(h.y), y2: f.y(h.y), stroke: h.color, 'stroke-dasharray': '6,3', 'stroke-width': 1.3 }, f.svg);
+    el('text', { x: W - M.r + 6, y: f.y(h.y) + 4, 'text-anchor': 'start', 'font-size': 11, fill: h.color }, f.svg, h.label);
+  }
+  cats.forEach((c, i) => {
+    const v = c.vals.slice().sort((a, b) => a - b), cx = f.x(i + 0.5), bw = cw * 0.55;
+    if (i > 0 && cats[i - 1].group !== c.group) el('line', { x1: f.x(i), x2: f.x(i), y1: M.t, y2: H - M.b, stroke: '#b9c4d3' }, f.svg);
+    const q1 = quant(v, .25), q2 = quant(v, .5), q3 = quant(v, .75), iqr = q3 - q1;
+    const inF = v.filter(t => t >= q1 - 1.5 * iqr && t <= q3 + 1.5 * iqr);
+    const lw = inF.length ? inF[0] : v[0], uw = inF.length ? inF[inF.length - 1] : v[v.length - 1];
+    v.forEach((t, k) => {
+      const j = ((k * 37) % 100) / 100 - 0.5;
+      el('circle', { cx: cx + j * bw, cy: f.y(t), r: 1.8, fill: c.color, 'fill-opacity': 0.45 }, f.svg);
+    });
+    el('line', { x1: cx, x2: cx, y1: f.y(lw), y2: f.y(uw), stroke: '#222' }, f.svg);
+    el('rect', { x: cx - bw / 2, y: f.y(q3), width: bw, height: Math.max(1, f.y(q1) - f.y(q3)), fill: c.color, 'fill-opacity': 0.25, stroke: '#222' }, f.svg);
+    el('line', { x1: cx - bw / 2, x2: cx + bw / 2, y1: f.y(q2), y2: f.y(q2), stroke: '#000', 'stroke-width': 2 }, f.svg);
+    el('text', { transform: `translate(${cx},${H - M.b + 10}) rotate(60)`, 'font-size': 10, fill: '#333' }, f.svg, c.label);
+  });
+  if (o.legend) legend(f.svg, o.legend, W - M.r + 10, M.t + 20);
+}
+
+/* ---------------- Class TP selector ---------------- */
+function initSel() {
+  const pop = $('#tp-pop');
+  pop.innerHTML = '<div class="acts"><button id="tp-all">Select all</button><button id="tp-none">Clear</button></div>' +
+    D.programs.map((p, i) => `<label><input type="checkbox" data-i="${i}" checked> ${esc(p.name)} <span class="muted">[${esc(p.tag)}] n=${p.units}</span></label>`).join('');
+  const boxes = () => [...pop.querySelectorAll('input[type=checkbox]')];
+  const setSel = () => {
+    SELS = new Set(boxes().filter(b => b.checked).map(b => +b.dataset.i));
+    const units = D.programs.reduce((a, p, i) => a + (SELS.has(i) ? p.units : 0), 0);
+    $('#tp-sum').textContent = SELS.size === D.programs.length ? `All programs (${units} units)` :
+      SELS.size === 0 ? 'No program selected' :
+      SELS.size === 1 ? `${D.programs[[...SELS][0]].name}  n=${units}` : `${SELS.size} of ${D.programs.length} programs (${units} units)`;
+  };
+  boxes().forEach(b => b.onchange = () => { setSel(); renderAll(); });
+  $('#tp-all').onclick = () => { boxes().forEach(b => b.checked = true); setSel(); renderAll(); };
+  $('#tp-none').onclick = () => { boxes().forEach(b => b.checked = false); setSel(); renderAll(); };
+  document.addEventListener('click', e => { if (!$('#tp-ms').contains(e.target)) $('#tp-ms').open = false; });
+  setSel();
+}
+
+/* ---------------- Vmin ---------------- */
+/* Fits are computed here for whatever programs are ticked (same rules as the generator):
+   linear Vmin vs UPM; weak R2 (< params.weakR2) or too few points -> median of the distribution. */
+function vminRows(dom, core, prog) {
+  /* core: 'all' (pooled over cores) or one core index; prog: program index, or null = all selected programs pooled */
+  const up = !!dom.upm, byF = {}, pf = progFilter(prog);
+  for (const key of Object.keys(dom.pts)) {
+    const [f, c] = key.split('|').map(Number);
+    if (core !== 'all' && c !== +core) continue;
+    const pts = dom.pts[key].filter(p => pf(p[2]));
+    if (pts.length) (byF[f] = byF[f] || []).push(...pts);
+  }
+  const rows = [];
+  for (const fk of Object.keys(byF)) {
+    const pts = byF[fk], f = +fk, ys = pts.map(p => p[1]);
+    const row = { f, c: core === 'all' ? 'all' : +core, n: pts.length, slope: null, icpt: null, r2: null, extrap: false, v: null, meth: '' };
+    const fit = up ? linfitJS(pts.map(p => p[0]), ys) : null;
+    if (fit) {
+      row.slope = fit.a; row.icpt = fit.b; row.r2 = isFinite(fit.r2) ? fit.r2 : null;
+      if (isFinite(fit.r2) && fit.r2 < D.params.weakR2) { row.v = median(ys); row.meth = `Median (weak R2 < ${D.params.weakR2})`; }
+      else { row.v = fit.a * dom.target + fit.b; row.meth = 'UPM fit'; row.extrap = dom.target < fit.lo || dom.target > fit.hi; }
+    } else {
+      row.v = median(ys);
+      row.meth = up ? 'Median-based; too few points for UPM fit' : 'Median-based; UPM unavailable';
+    }
+    rows.push(row);
+  }
+  return rows.sort((a, b) => a.f - b.f);
+}
+function ptsAt(dom, f, core) {
+  const out = [];
+  for (const k of Object.keys(dom.pts)) {
+    const [kf, kc] = k.split('|').map(Number);
+    if (kf === +f && (core === 'all' || kc === +core)) out.push(...dom.pts[k]);
+  }
+  return out.filter(p => inSel(p[2]));
+}
+const coreLabel = c => c === 'all' ? 'all cores' : 'core ' + c;
+const shortProg = i => D.programs[i].name.replace(/^NVLAX62A0/, '');
+function renderVmin() {
+  const doms = Object.keys(D.vmin);
+  if (!doms.length) { noData($('#v-vf'), 'No Vmin columns found.'); return; }
+  fillSelect('#v-dom', doms.map(d => ({ v: d, t: d })), true);
+  const dom = D.vmin[$('#v-dom').value], name = $('#v-dom').value;
+  fillSelect('#v-core', [{ v: 'all', t: 'All cores' }, ...dom.cores.map(c => ({ v: c, t: 'Core ' + c }))], true);
+  const core = $('#v-core').value, cl = coreLabel(core);
+  $('#v-scope').innerHTML = `Scope: domain <b>${esc(name)}</b>, <b>${cl}</b>. The VF curve, Vmin vs UPM, distribution, fit table, Module Pareto and Limiting Pattern below all show this domain and ${cl} only, split per selected test program.`;
+  const rowsOf = p => vminRows(dom, core, p);
+  const allRows = selProgs().flatMap(p => rowsOf(p));
+  $('#v-info').innerHTML = `PU group: <b>${dom.pu}</b> (${esc(dom.die)}); tokens: ${dom.tokens.join(', ')}; UPM: ` +
+    (dom.upm ? `<b>${esc(dom.upm)}</b>; target ${dom.target}` : `<b class="warn">unavailable - Median-based; UPM unavailable</b>`) +
+    '. One line per test program. Hollow markers = median of the distribution (weak R2, too few points or no UPM); dashed red ring = UPM target outside the fitted UPM range (extrapolated: ' + allRows.filter(r => r.extrap).length + ' of ' + allRows.length + ' points).' +
+    (dom.presi ? ` Green dashed line = PreSi model <b>${esc(D.presiModel)}</b> (domain ${esc(dom.presiToken)}).` : ' No PreSi model for this domain.');
+  const series = selProgs().map(p => ({ name: shortProg(p), color: PAL[p % 10],
+    pts: rowsOf(p).map(r => [r.f, r.v, r.meth.startsWith('Median'), r.extrap]) })).filter(s => s.pts.length);
+  if (dom.presi && series.length) {
+    const lo = Math.min(...dom.freqs), hi = Math.max(...dom.freqs), pad = Math.max(0.15 * (hi - lo), 0.2);
+    const pp = dom.presi.filter(p => p[0] >= lo - pad && p[0] <= hi + pad);
+    if (pp.length) series.push({ name: `PreSi (${dom.presiToken})`, color: '#00a651', dash: true, nomark: true, pts: pp });
+  }
+  lineChart($('#v-vf'), series, { xlab: 'Frequency (GHz)', ylab: dom.upm ? 'Vmin @ UPM target (V)' : 'Median Vmin (V)' });
+  fillSelect('#v-f', [...new Set(dom.freqs)].map(f => ({ v: f, t: f })), true);
+  const pts = ptsAt(dom, $('#v-f').value, core);
+  if (dom.upm) {
+    const curves = [];
+    selProgs().forEach(p => {
+      const q = pts.filter(x => x[2] === p), ft = linfitJS(q.map(x => x[0]), q.map(x => x[1]));
+      if (ft) curves.push({ fn: x => ft.a * x + ft.b, color: PAL[p % 10], name: 'fit ' + shortProg(p) });
+    });
+    scatterChart($('#v-sc'), pts.map(p => ({ x: p[0], y: p[1], p: p[2] })), {
+      xlab: 'UPM (normalised)', ylab: 'Vmin (V)', vline: dom.target, curves
+    });
+  } else {
+    noData($('#v-sc'), 'No UPM mapping for this domain; see the distribution on the right.');
+  }
+  // distribution: one box per selected program, plus the pooled selection
+  const progs = [...new Set(pts.map(p => p[2]))].sort((a, b) => a - b);
+  const cats = progs.map(i => ({ label: shortProg(i), vals: pts.filter(p => p[2] === i).map(p => p[1]), color: PAL[i % 10], group: 0 }));
+  if (progs.length > 1) cats.push({ label: 'All selected', vals: pts.map(p => p[1]), color: '#444', group: 1 });
+  boxStrip($('#v-dist'), cats, { ylab: 'Vmin (V)', cw: 56, bm: 90, minw: 340 });
+  $('#v-dstat').innerHTML = table(cats.map(c => { const v = sortedNum(c.vals); return { g: c.label, n: v.length, min: v[0], med: quant(v, .5), max: v[v.length - 1] }; }), [
+    { h: 'Program', f: r => esc(r.g), l: 1 }, { h: 'N', f: r => r.n }, { h: 'Min (V)', f: r => fmt(r.min, 4) },
+    { h: 'Median (V)', f: r => fmt(r.med, 4) }, { h: 'Max (V)', f: r => fmt(r.max, 4) }]);
+  $('#v-tbl').innerHTML = table(partition(p => rowsOf(p)), [
+    { h: 'Freq GHz', k: 'f' }, { h: 'Core', f: r => r.c }, { h: 'N', k: 'n' },
+    { h: 'Slope (V/UPM)', f: r => fmt(r.slope, 4) }, { h: 'Intercept', f: r => fmt(r.icpt, 4) }, { h: 'R2', f: r => fmt(r.r2, 3) },
+    { h: 'Vmin @ target (V)', f: r => fmt(r.v, 4) }, { h: 'Method', k: 'meth', l: 1 },
+    { h: 'Extrapolated', f: r => r.extrap ? 'yes' : '' }]);
+}
+
+/* ---------------- SICC ---------------- */
+function siccStat(s, prog) {
+  const d = s.d.filter(p => progFilter(prog)(p[1]));
+  if (!d.length) return null;
+  const v = sortedNum(d.map(p => p[0]));
+  const st = { n: d.length, med: quant(v, .5), p5: quant(v, .05), p95: quant(v, .95) };
+  if (s.upm) {
+    const dd = d.filter(p => p[2] !== null);
+    const fit = linfitJS(dd.map(p => p[2]), dd.map(p => Math.log(p[0])));
+    if (fit) Object.assign(st, { a: fit.a, b: fit.b, r2: isFinite(fit.r2) ? fit.r2 : null, at: Math.exp(fit.a * s.target + fit.b),
+      extrap: s.target < fit.lo || s.target > fit.hi });
+  }
+  return st;
+}
+function renderSicc() {
+  const S = D.sicc, keys = Object.keys(S.series);
+  if (!keys.length) { noData($('#s-box'), 'No SICC columns found.'); return; }
+  const fams = [...new Set(keys.map(k => S.series[k].family))].sort();
+  fillSelect('#s-fam', fams.map(f => ({ v: f, t: f })), true);
+  const meas = Object.keys(S.measures);
+  const NA = 'n/a - no data';
+  const stOf = (k, p) => { const s = k && S.series[k]; return s ? siccStat(s, p) : null; };
+  const defs = (S.targetDefs || []).filter(t => ['raw_V1', 'tester_at_ref', 'system_at_ref'].some(m => t.keys[m] && S.series[t.keys[m]]))
+    .map(t => ({ t, ref: S.series[t.keys.raw_V1] || S.series[t.keys.system_at_ref] || S.series[t.keys.tester_at_ref] }));
+  const withT = defs.filter(x => x.t.presi !== null && x.t.presi !== undefined), noT = defs.filter(x => !withT.includes(x));
+  const atCell = st => st ? (st.at !== undefined ? fmt(st.at, 3) : 'n/a') : NA;
+  $('#s-presisrc').textContent = S.presiSrc ? `PreSi V1 target = 0.7V/100C [A] of the latest PreSi Parameters file: ${S.presiSrc.file}, model column "${S.presiSrc.column}".` :
+    'PreSi Parameters file not loaded.';
+  // S2T multiplier (System @ ref / Tester @ ref) per domain and test program; pooled = n-weighted mean of the per-program medians
+  const s2tOf = (dom, p) => {
+    const rs = (S.s2tDom || []).filter(x => x.dom === dom && (p === null || p === undefined ? inSel(x.p) : x.p === p));
+    if (!rs.length) return null;
+    const n = rs.reduce((a, x) => a + x.n, 0), med = rs.reduce((a, x) => a + x.med * x.n, 0) / n;
+    const min = Math.min(...rs.map(x => x.min)), max = Math.max(...rs.map(x => x.max));
+    return { n, med, min, max, static: max - min <= 1e-3 * Math.abs(med) };
+  };
+  const tgtRows = p => withT.map(x => {
+    const raw = stOf(x.t.keys.raw_V1, p), te = stOf(x.t.keys.tester_at_ref, p), sy = stOf(x.t.keys.system_at_ref, p), first = raw || sy || te;
+    if (!first) return null;
+    return { domain: x.t.domain, series: x.ref ? x.ref.token : '', n: first.n, pu: x.ref && x.ref.pu, upmTarget: x.ref && x.ref.target, raw, te, sy,
+      s2t: s2tOf(x.t.domain, p), presi: x.t.presi, sysRatio: sy && sy.at !== undefined && x.t.presi ? sy.at / x.t.presi : null };
+  }).filter(Boolean);
+  $('#s-tgt').innerHTML = table(partition(tgtRows), [
+    { h: 'Domain', f: r => esc(r.domain), l: 1 }, { h: 'Series', f: r => esc(r.series), l: 1 }, { h: 'PU', f: r => r.pu || '', l: 1 },
+    { h: 'N', f: r => r.n }, { h: 'UPM target', f: r => fmt(r.upmTarget, 3) }, { h: 'PreSi target', f: r => fmt(r.presi, 3) },
+    { h: 'Raw SICC V1 @ UPM target', f: r => atCell(r.raw) },
+    { h: 'Tester @ ref SICC V1 @ UPM target', f: r => atCell(r.te) },
+    { h: 'System @ ref SICC V1 @ UPM target', f: r => atCell(r.sy) },
+    { h: 'S2T multiplier (System @ ref / Tester @ ref)', f: r => !r.s2t ? NA : fmt(r.s2t.med, 4) + (r.s2t.static ? '' : ` (varies ${fmt(r.s2t.min, 4)} - ${fmt(r.s2t.max, 4)})`) },
+    { h: 'System @ ref / PreSi', f: r => r.sysRatio === null ? NA : fmt(r.sysRatio, 3) },
+    { h: 'R2 (System @ ref)', f: r => r.sy && r.sy.r2 !== null && r.sy.r2 !== undefined ? fmt(r.sy.r2, 3) : NA }]);
+  const usedRows = new Set(withT.map(x => x.t.presiRow));
+  const unres = [];
+  if (noT.length) unres.push('domains with no PreSi target: ' + noT.map(x => esc(x.t.domain) + (x.t.presiRow ? ` (PreSi row "${esc(x.t.presiRow)}" is empty)` : ' (no PreSi row mapped)')).join('; '));
+  const noDom = (S.presiRows || []).filter(p => p.v1 !== null && !usedRows.has(p.row));
+  if (noDom.length) unres.push('PreSi targets with no matching domain data in this CSV: ' + noDom.map(p => esc(p.row) + (p.alias ? ` (${esc(p.alias)})` : '') + ' = ' + fmt(p.v1, 3)).join('; '));
+  const emptyP = (S.presiRows || []).filter(p => p.v1 === null);
+  if (emptyP.length) unres.push('PreSi rows without a V1 value: ' + emptyP.map(p => esc(p.row)).join('; '));
+  $('#s-unres').innerHTML = unres.length ? '<b>Unresolved domains and targets</b> - ' + unres.join('. ') + '.' : '';
+  fillSelect('#s-meas', meas.map(m => ({ v: m, t: S.measures[m] })), true);
+  const fam = $('#s-fam').value, m = $('#s-meas').value, logy = $('#s-log').checked;
+  const list = keys.map(k => S.series[k]).filter(s => s.family === fam && s.measure === m)
+    .sort((a, b) => a.token.localeCompare(b.token, undefined, { numeric: true }));
+  // S2T multiplier table: only for the System at ref measure
+  $('#s-s2tbox').style.display = m === 'system_at_ref' ? '' : 'none';
+  if (m === 'system_at_ref') {
+    const rows = (S.s2t || []).filter(x => inSel(x.p)).sort((a, b) => a.d.localeCompare(b.d, undefined, { numeric: true }) || a.p - b.p);
+    $('#s-s2tinfo').textContent = 'S2T multiplier = System at ref / Tester at ref per unit. Expected to be one static value per domain and test program; Static = no (see Min / Max) when it is not.';
+    $('#s-s2t').innerHTML = rows.length ? table(rows, [
+      { h: 'Domain', f: r => esc(r.d), l: 1 }, { h: 'Test program', f: r => esc(D.programs[r.p].name), l: 1 }, { h: 'N', f: r => r.n },
+      { h: 'S2T multiplier', f: r => fmt(r.med, 4) }, { h: 'Static', f: r => r.static ? 'yes' : 'no' },
+      { h: 'Min', f: r => fmt(r.min, 4) }, { h: 'Max', f: r => fmt(r.max, 4) }]) :
+      `<span class="muted">${NA}: the System at ref / Tester at ref columns are empty for the selected programs.</span>`;
+  }
+  const isSA = fam === 'SA';
+  $('#s-subctl').style.display = isSA ? '' : 'none';
+  $('#s-toklbl').style.display = isSA ? 'none' : '';
+  $('#s-info').innerHTML = list.length ? `${list.length} tokens. At-ref values are as delivered in the CSV; raw values are unnormalised class measurements.` :
+    `${NA} for ${esc(S.measures[m])} in family ${esc(fam)} (the CSV columns are empty or absent).`;
+  let tok;
+  if (isSA) {
+    fillSelect('#s-sub', list.map(s => ({ v: s.token, t: s.token })), true);
+    const sub = list.find(s => s.token === $('#s-sub').value);
+    const pts = sub ? sub.d.filter(d => inSel(d[1])) : [];
+    const progs = [...new Set(pts.map(p => p[1]))].sort((a, b) => a - b);
+    const cats = progs.map(i => ({ label: shortProg(i), vals: pts.filter(p => p[1] === i).map(p => p[0]), color: PAL[i % 10], group: 0 }));
+    if (progs.length > 1) cats.push({ label: 'All selected', vals: pts.map(p => p[0]), color: '#444', group: 1 });
+    boxStrip($('#s-box'), cats, { ylab: S.measures[m], logy, cw: 56, bm: 90, minw: 340 });
+    tok = sub && sub.upm ? sub : null;
+  } else {
+    const cats = [];
+    list.forEach(s => selProgs().forEach(p => cats.push({ label: `${s.token} ${shortProg(p)}`, group: s.token, color: PAL[p % 10],
+      vals: s.d.filter(d => d[1] === p).map(d => d[0]) })));
+    boxStrip($('#s-box'), cats, { ylab: S.measures[m], logy, cw: 22, bm: 150,
+      legend: selProgs().map(p => ({ color: PAL[p % 10], label: shortProg(p) })) });
+    const fitTok = list.filter(s => s.upm);
+    fillSelect('#s-tok', fitTok.map(s => ({ v: s.token, t: s.token })), true);
+    tok = fitTok.find(s => s.token === $('#s-tok').value);
+  }
+  if (tok) {
+    const curves = [];
+    selProgs().forEach(p => {
+      const ft = siccStat(tok, p);
+      if (ft && ft.a !== undefined) curves.push({ fn: x => Math.exp(ft.a * x + ft.b), color: PAL[p % 10], name: 'fit ' + shortProg(p) });
+    });
+    scatterChart($('#s-sc'), tok.d.filter(d => inSel(d[1]) && d[2] !== null).map(d => ({ x: d[2], y: d[0], p: d[1] })), {
+      xlab: 'UPM (normalised)', ylab: S.measures[m], logy: true, vline: tok.target, curves
+    });
+  } else {
+    noData($('#s-sc'), list.length ? 'No UPM mapping for this family/measure (distribution only). See "Unmapped / ambiguous tokens".' : 'No tokens.');
+  }
+  $('#s-tbl').innerHTML = table(partition(p => list.map(s => ({ s, f: siccStat(s, p) })).filter(r => r.f)), [
+    { h: 'Token', f: r => esc(r.s.token), l: 1 }, { h: 'PU', f: r => r.s.pu || '', l: 1 }, { h: 'N', f: r => r.f.n },
+    { h: 'Median', f: r => fmt(r.f.med, 4) }, { h: 'P5', f: r => fmt(r.f.p5, 4) }, { h: 'P95', f: r => fmt(r.f.p95, 4) },
+    { h: 'SICC @ UPM target', f: r => fmt(r.f.at, 4) }, { h: 'R2', f: r => fmt(r.f.r2, 3) }]);
+}
+
+/* ---------------- DTS ---------------- */
+function renderDts() {
+  const doms = Object.keys(D.dts);
+  if (!doms.length) { noData($('#d-box'), 'No DTS columns found.'); return; }
+  fillSelect('#d-dom', doms.map(d => ({ v: d, t: d })), true);
+  const name = $('#d-dom').value, groups = D.dts[name];
+  const corners = [...new Set(groups.map(g => g.c))];
+  const hue = c => 360 * corners.indexOf(c) / Math.max(corners.length, 1);
+  const light = m => m.startsWith('ARR') ? 38 : m.startsWith('FUN') ? 50 : m.startsWith('SCN') ? 62 : 56;
+  const box = $('#d-box'), progs = selProgs();
+  box.innerHTML = '';
+  let nObs = 0, nBuck = 0;
+  progs.forEach(p => {
+    const cats = groups.map(g => ({
+      label: `${g.c} ${g.f} ${g.m}`, group: g.c, color: `hsl(${hue(g.c)},65%,${light(g.m)}%)`,
+      vals: g.v.filter((_, i) => g.p[i] === p)
+    }));
+    const n = cats.reduce((a, c) => a + c.vals.length, 0);
+    nObs += n; nBuck += cats.filter(c => c.vals.length).length;
+    const h = document.createElement('h4'), ch = document.createElement('div');
+    h.style.margin = '10px 0 2px'; h.textContent = `Test program: ${D.programs[p].name}${D.programs[p].tag ? ' [' + D.programs[p].tag + ']' : ''} - ${n} observations`;
+    ch.className = 'chart';
+    box.appendChild(h); box.appendChild(ch);
+    if (!n) { noData(ch, 'n/a - no data for this test program.'); return; }
+    boxStrip(ch, cats, {
+      ylab: 'MaxDTS (C)', cw: 26, bm: 130,
+      hlines: [{ y: 90, color: '#2e7d32', label: 'Lower limit = 90C' }, { y: 110, color: '#c62828', label: 'Upper limit = 110C' }],
+      legend: corners.map(c => ({ color: `hsl(${hue(c)},65%,50%)`, label: c }))
+    });
+  });
+  if (!progs.length) noData(box, 'No test program selected.');
+  $('#d-info').textContent = `${name}: ${nObs} observations in ${nBuck} buckets (corner | GHz | module), one chart per selected test program. Box = IQR, line = median, whiskers = 1.5 IQR.`;
+  const rowsOf = p => groups.map(g => {
+    const v = g.v.filter((_, k) => g.p[k] === p).sort((a, b) => a - b);
+    if (!v.length) return null;
+    return { c: g.c, f: g.f, m: g.m, n: v.length, min: v[0], p25: quant(v, .25), med: quant(v, .5), p75: quant(v, .75), max: v[v.length - 1],
+      a100: 100 * v.filter(t => t > 100).length / v.length };
+  }).filter(Boolean);
+  const cols = [{ h: 'Corner', k: 'c', l: 1 }, { h: 'GHz', k: 'f' }, { h: 'Module', k: 'm', l: 1 }, { h: 'N', k: 'n' },
+    { h: 'Min', f: r => fmt(r.min, 1) }, { h: 'P25', f: r => fmt(r.p25, 1) }, { h: 'Median', f: r => fmt(r.med, 1) },
+    { h: 'P75', f: r => fmt(r.p75, 1) }, { h: 'Max', f: r => fmt(r.max, 1) }, { h: '>100C %', f: r => fmt(r.a100, 2) }];
+  $('#d-viol').innerHTML = table(partition(p => rowsOf(p).filter(r => r.med > 100 || r.max > 110).sort((a, b) => b.med - a.med), false), cols);
+  $('#d-tbl').innerHTML = table(partition(rowsOf, false), cols);
+}
+
+/* ---------------- Overview ---------------- */
+const NA = 'n/a - no data';
+function renderUnits() {
+  const O = D.overview, rows = O.units.filter(u => inSel(u.p));
+  const tg = rows.reduce((a, u) => a + u.good, 0), tr = rows.reduce((a, u) => a + u.rows, 0);
+  $('#o-uinfo').innerHTML = `<b>${tg}</b> good units in the selected programs (${tr} units in the CSV). Good unit = ` +
+    (O.binCol ? `${esc(O.binCol)} = 1.` : '<b class="warn">no interface bin column in the CSV; every row is counted as good.</b>');
+  const list = rows.map(u => ({ name: D.programs[u.p].name, tag: D.programs[u.p].tag, rows: u.rows, good: u.good }));
+  if (list.length > 1) list.push({ name: 'Total (selected)', tag: '', rows: tr, good: tg, bold: 1 });
+  $('#o-units').innerHTML = table(list, [
+    { h: 'Class test program', f: r => r.bold ? `<b>${esc(r.name)}</b>` : esc(r.name), l: 1 }, { h: 'Tag', k: 'tag', l: 1 },
+    { h: 'Units in CSV', k: 'rows' }, { h: 'Good units', f: r => r.bold ? `<b>${r.good}</b>` : r.good },
+    { h: 'Good %', f: r => r.rows ? fmt(100 * r.good / r.rows, 1) : '' }]);
+}
+function renderUpmMedians() {
+  const O = D.overview, labs = Object.keys(O.upm);
+  if (!labs.length) { $('#o-minfo').textContent = NA + ': no UPM columns found.'; $('#o-upm').innerHTML = ''; return; }
+  $('#o-minfo').innerHTML = 'Median UPM of good units (outliers beyond median +-3 sigma removed). ' +
+    labs.map(l => `${l}: <b>${esc(O.upm[l].pu)}</b>, target ${O.upm[l].target}`).join('; ') + '.';
+  const med = (l, sel) => { const u = O.upm[l], v = []; if (!u) return null; u.p.forEach((p, i) => { if (sel(p)) v.push(u.x[i]); }); return v.length ? { m: median(v), n: v.length } : null; };
+  const cell = (r, l) => r ? `${fmt(r.m, 4)} n=${r.n}; (tgt=${O.upm[l].target})` : NA;
+  const sels = [...SELS].sort((a, b) => a - b);
+  const rows = sels.map(p => ({ name: D.programs[p].name, tag: D.programs[p].tag, v: Object.fromEntries(labs.map(l => [l, med(l, q => q === p)])) }));
+  if (sels.length > 1) rows.push({ name: 'All selected', tag: '', bold: 1, v: Object.fromEntries(labs.map(l => [l, med(l, inSel)])) });
+  $('#o-upm').innerHTML = table(rows, [{ h: 'Class test program', f: r => r.bold ? `<b>${esc(r.name)}</b>` : esc(r.name), l: 1 }, { h: 'Tag', k: 'tag', l: 1 },
+    ...labs.map(l => ({ h: `${l} median UPM (${O.upm[l].pu})`, f: r => cell(r.v[l], l) }))]);
+  renderUpmDist();
+}
+function normInv(p) {
+  const a = [-3.969683028665376e+01, 2.209460984245205e+02, -2.759285104469687e+02, 1.383577518672690e+02, -3.066479806614716e+01, 2.506628277459239e+00],
+    b = [-5.447609879822406e+01, 1.615858368580409e+02, -1.556989798598866e+02, 6.680131188771972e+01, -1.328068155288572e+01],
+    c = [-7.784894002430293e-03, -3.223964580411365e-01, -2.400758277161838e+00, -2.549732539343734e+00, 4.374664141464968e+00, 2.938163982698783e+00],
+    d = [7.784695709041462e-03, 3.224671290700398e-01, 2.445134137298907e+00, 3.754408661907416e+00], pl = 0.02425;
+  let q, r;
+  if (p < pl) { q = Math.sqrt(-2 * Math.log(p)); return (((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  if (p > 1 - pl) { q = Math.sqrt(-2 * Math.log(1 - p)); return -(((((c[0] * q + c[1]) * q + c[2]) * q + c[3]) * q + c[4]) * q + c[5]) / ((((d[0] * q + d[1]) * q + d[2]) * q + d[3]) * q + 1); }
+  q = p - 0.5; r = q * q;
+  return (((((a[0] * r + a[1]) * r + a[2]) * r + a[3]) * r + a[4]) * r + a[5]) * q / (((((b[0] * r + b[1]) * r + b[2]) * r + b[3]) * r + b[4]) * r + 1);
+}
+/* UPM distribution per die: normal quantile plot + outlier box plot + histogram + summary stats, one panel per die (all in one view). */
+function renderUpmDist() {
+  const O = D.overview, host = $('#o-dist'), leg = $('#o-dleg');
+  host.innerHTML = ''; leg.innerHTML = '';
+  const order = ['Cdie', 'GT', 'HUB'].filter(l => O.upm[l]);
+  if (!order.length) return;
+  const progs = selProgs();
+  leg.innerHTML = progs.map(p => `<span><span class="sw" style="background:${PAL[p % 10]}"></span>${esc(D.programs[p].name)}</span>`).join('');
+  order.forEach(l => {
+    const u = O.upm[l], panel = document.createElement('div');
+    panel.className = 'dpanel';
+    host.appendChild(panel);
+    const h = document.createElement('h4');
+    h.textContent = `${l} (${u.pu}), UPM target ${u.target}`;
+    panel.appendChild(h);
+    const gs = progs.map(p => { const v = []; u.p.forEach((q, i) => { if (q === p) v.push(u.x[i]); }); return { p, v: sortedNum(v) }; }).filter(g => g.v.length);
+    if (!gs.length) { const d = document.createElement('div'); noData(d, NA + ' for the selected programs.'); panel.appendChild(d); return; }
+    const all = gs.flatMap(g => g.v);
+    let ylo = Math.min(...all, u.target), yhi = Math.max(...all, u.target);
+    const pad = (yhi - ylo) * 0.06 || 0.01; ylo -= pad; yhi += pad;
+    const row = document.createElement('div'), cq = document.createElement('div'), cb = document.createElement('div'), ch = document.createElement('div'), ct = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:0;align-items:flex-start';
+    [cq, cb].forEach(c => { c.style.cssText = 'border:0;margin:0'; row.appendChild(c); });
+    panel.appendChild(row); panel.appendChild(ch); panel.appendChild(ct);
+    // normal quantile plot
+    const H = 250, Mq = { l: 48, r: 6, t: 14, b: 38 }, zr = [-3.5, 3.5], WQ = 210;
+    const pts = [];
+    gs.forEach(g => {
+      const n = g.v.length, step = Math.max(1, Math.floor(n / 300));
+      for (let i = 0; i < n; i += step) pts.push({ z: normInv((i + 0.5) / n), y: g.v[i], p: g.p });
+    });
+    const fq = frame(cq, WQ, H, Mq, zr, [ylo, yhi], {
+      xlab: 'Normal quantile', ylab: 'UPM',
+      hover: (f, c) => {
+        let best = null;
+        for (const q of pts) { const d = Math.hypot(f.x(q.z) - c.mx, f.y(q.y) - c.my); if (d < 8 && (!best || d < best.d)) best = { d, q }; }
+        return best ? { snap: [f.x(best.q.z), f.y(best.q.y)], replace: true, extra: [D.programs[best.q.p].name, `UPM: ${fmtN(best.q.y)}`, `Normal quantile: ${fmtN(best.q.z)}`] } : null;
+      }
+    });
+    for (const t of [-3, -2, -1, 0, 1, 2, 3]) el('text', { x: fq.x(t), y: H - Mq.b + 14, 'text-anchor': 'middle', 'font-size': 11, fill: '#44546a' }, fq.svg, t);
+    el('line', { x1: Mq.l, x2: WQ - Mq.r, y1: fq.y(u.target), y2: fq.y(u.target), stroke: '#c0392b', 'stroke-dasharray': '5,3' }, fq.svg);
+    const mu = all.reduce((a, v) => a + v, 0) / all.length, sd = Math.sqrt(all.reduce((a, v) => a + (v - mu) * (v - mu), 0) / Math.max(1, all.length - 1));
+    el('line', { x1: fq.x(zr[0]), x2: fq.x(zr[1]), y1: fq.y(mu + sd * zr[0]), y2: fq.y(mu + sd * zr[1]), stroke: '#c0392b', 'stroke-width': 1.2, 'clip-path': fq.clip }, fq.svg);
+    pts.forEach(q => el('circle', { cx: fq.x(q.z), cy: fq.y(q.y), r: 2.4, fill: PAL[q.p % 10], 'fill-opacity': 0.65 }, fq.svg));
+    // outlier box plot, same y axis
+    const Wb = 20 + gs.length * 26, Mb = { l: 6, r: 6, t: 14, b: 38 };
+    const fb = frame(cb, Wb, H, Mb, [0, gs.length], [ylo, yhi], {
+      noyticks: true, xcat: true,
+      hover: (f, c) => {
+        const g = gs[Math.floor(c.dx)];
+        if (!g) return null;
+        return { extra: [D.programs[g.p].name, `n ${g.v.length}   min ${fmtN(g.v[0])}   max ${fmtN(g.v[g.v.length - 1])}`,
+          `Q1 ${fmtN(quant(g.v, .25))}   median ${fmtN(quant(g.v, .5))}   Q3 ${fmtN(quant(g.v, .75))}`] };
+      }
+    });
+    gs.forEach((g, i) => {
+      const cx = fb.x(i + 0.5), bw = 14, q1 = quant(g.v, .25), q2 = quant(g.v, .5), q3 = quant(g.v, .75), iqr = q3 - q1;
+      const inF = g.v.filter(t => t >= q1 - 1.5 * iqr && t <= q3 + 1.5 * iqr);
+      el('line', { x1: cx, x2: cx, y1: fb.y(inF[0]), y2: fb.y(inF[inF.length - 1]), stroke: '#222' }, fb.svg);
+      el('rect', { x: cx - bw / 2, y: fb.y(q3), width: bw, height: Math.max(1, fb.y(q1) - fb.y(q3)), fill: PAL[g.p % 10], 'fill-opacity': 0.3, stroke: '#222' }, fb.svg);
+      el('line', { x1: cx - bw / 2, x2: cx + bw / 2, y1: fb.y(q2), y2: fb.y(q2), stroke: '#000', 'stroke-width': 2 }, fb.svg);
+      g.v.filter(t => t < q1 - 1.5 * iqr || t > q3 + 1.5 * iqr).forEach(t => el('circle', { cx, cy: fb.y(t), r: 2, fill: 'none', stroke: PAL[g.p % 10] }, fb.svg));
+    });
+    el('line', { x1: Mb.l, x2: Wb - Mb.r, y1: fb.y(u.target), y2: fb.y(u.target), stroke: '#c0392b', 'stroke-dasharray': '5,3' }, fb.svg);
+    // histogram (stacked by program)
+    const NB = 24, bwid = (yhi - ylo) / NB, cnt = gs.map(() => new Array(NB).fill(0));
+    gs.forEach((g, gi) => g.v.forEach(t => { cnt[gi][Math.min(NB - 1, Math.max(0, Math.floor((t - ylo) / bwid)))]++; }));
+    const tot = Array.from({ length: NB }, (_, k) => cnt.reduce((a, c) => a + c[k], 0)), mx = Math.max(...tot);
+    const Wh = WQ + Wb, Mh = { l: 48, r: 6, t: 14, b: 38 };
+    const fh = frame(ch, Wh, 190, Mh, [ylo, yhi], [0, mx * 1.08], {
+      xlab: 'UPM', ylab: 'Units', xcat: false,
+      hover: (f, c) => {
+        const k = Math.floor((c.dx - ylo) / bwid);
+        if (k < 0 || k >= NB) return null;
+        return { extra: [`UPM ${fmtN(ylo + k * bwid)} to ${fmtN(ylo + (k + 1) * bwid)}`, ...gs.map((g, gi) => `${D.programs[g.p].name}: ${cnt[gi][k]}`)], replace: true };
+      }
+    });
+    for (const t of niceTicks(ylo, yhi, 5)) el('text', { x: fh.x(t), y: 190 - Mh.b + 14, 'text-anchor': 'middle', 'font-size': 11, fill: '#44546a' }, fh.svg, t);
+    for (let k = 0; k < NB; k++) {
+      let acc = 0;
+      gs.forEach((g, gi) => {
+        const n = cnt[gi][k];
+        if (!n) return;
+        el('rect', { x: fh.x(ylo + k * bwid), y: fh.y(acc + n), width: Math.max(1, fh.x(ylo + (k + 1) * bwid) - fh.x(ylo + k * bwid) - 1), height: fh.y(acc) - fh.y(acc + n),
+          fill: PAL[g.p % 10], 'fill-opacity': 0.75 }, fh.svg);
+        acc += n;
+      });
+    }
+    el('line', { x1: fh.x(u.target), x2: fh.x(u.target), y1: Mh.t, y2: 190 - Mh.b, stroke: '#c0392b', 'stroke-dasharray': '5,3' }, fh.svg);
+    // summary statistics
+    const stat = g => { const n = g.v.length, m = g.v.reduce((a, v) => a + v, 0) / n, s = n > 1 ? Math.sqrt(g.v.reduce((a, v) => a + (v - m) * (v - m), 0) / (n - 1)) : null;
+      return { name: shortProg(g.p), n, m, s, med: quant(g.v, .5), min: g.v[0], max: g.v[n - 1] }; };
+    const srows = gs.map(stat);
+    if (gs.length > 1) srows.push({ ...stat({ p: gs[0].p, v: sortedNum(all) }), name: 'All selected' });
+    ct.innerHTML = table(srows, [{ h: 'Program', k: 'name', l: 1 }, { h: 'N', k: 'n' }, { h: 'Mean', f: r => fmt(r.m, 4) }, { h: 'Std dev', f: r => fmt(r.s, 4) },
+      { h: 'Median', f: r => fmt(r.med, 4) }, { h: 'Min', f: r => fmt(r.min, 4) }, { h: 'Max', f: r => fmt(r.max, 4) }]);
+  });
+}
+function renderCap() {
+  const S = D.sicc;
+  const defs = (S.targetDefs || []).filter(t => t.presi !== null && t.presi !== undefined &&
+    Object.values(t.keys).some(k => S.series[k] && S.series[k].upm));
+  if (!defs.length) {
+    fillSelect('#o-cdom', [], true); fillSelect('#o-cmeas', [], true);
+    $('#o-cinfo').textContent = NA + ': no SICC series with a UPM mapping and a PreSi target.'; $('#o-cap').innerHTML = ''; $('#o-cq').innerHTML = ''; return;
+  }
+  fillSelect('#o-cdom', defs.map(t => ({ v: t.domain, t: t.domain })), true);
+  if (!renderCap.init) { renderCap.init = true; if (defs.some(t => t.domain === 'Core')) $('#o-cdom').value = 'Core'; }
+  const t = defs.find(x => x.domain === $('#o-cdom').value);
+  const ms = Object.keys(t.keys).filter(m => S.series[t.keys[m]] && S.series[t.keys[m]].upm);
+  fillSelect('#o-cmeas', ms.map(m => ({ v: m, t: S.measures[m] || m })), true);
+  const s = S.series[t.keys[$('#o-cmeas').value]], logy = $('#o-clog').checked;
+  const pts = s.d.filter(d => inSel(d[1]) && d[2] !== null && d[0] > 0);
+  $('#o-cinfo').innerHTML = `Domain <b>${esc(t.domain)}</b>, series ${esc(s.token)} (${esc(S.measures[s.measure] || s.measure)}); PU <b>${esc(s.pu)}</b>, UPM target <b>${s.target}</b> (vertical red line); ` +
+    `PreSi V1 target <b>${fmt(t.presi, 3)}</b> (horizontal green line). One log-linear fit per test program; fit values at the UPM target are in the table sub-headers.`;
+  const curves = [];
+  selProgs().forEach(p => {
+    const ft = siccStat(s, p);
+    if (ft && ft.a !== undefined) curves.push({ fn: x => Math.exp(ft.a * x + ft.b), color: PAL[p % 10], name: 'fit ' + shortProg(p) });
+  });
+  scatterChart($('#o-cap'), pts.map(d => ({ x: d[2], y: d[0], p: d[1] })), {
+    xlab: 'UPM (normalised)', ylab: S.measures[s.measure] || s.measure, logy, vline: s.target, hline: { y: t.presi, label: 'PreSi ' + fmt(t.presi, 3) }, curves
+  });
+  const labels = ['UPM >= target and SICC <= PreSi target', 'UPM >= target and SICC > PreSi target', 'UPM < target and SICC <= PreSi target', 'UPM < target and SICC > PreSi target'];
+  const qRows = p => {
+    const pp = pts.filter(d => p === null ? true : d[1] === p), q = [0, 0, 0, 0];
+    pp.forEach(d => { q[(d[2] >= s.target ? 0 : 2) + (d[0] <= t.presi ? 0 : 1)]++; });
+    return pp.length ? labels.map((l, i) => ({ l, n: q[i], tot: pp.length })) : [];
+  };
+  const fitTxt = p => { const ft = siccStat(s, p); return ft && ft.at !== undefined ? `fit @ UPM target ${fmt(ft.at, 3)} (R2 ${fmt(ft.r2, 3)}${ft.extrap ? ', extrapolated' : ''})` : 'no fit (too few points)'; };
+  $('#o-cq').innerHTML = table(partition(qRows, true, fitTxt), [{ h: 'Region', k: 'l', l: 1 }, { h: 'Units', k: 'n' },
+    { h: '% of plotted', f: r => fmt(100 * r.n / r.tot, 1) }]);
+}
+function renderFlow() {
+  const O = D.overview, rows = O.flow.filter(r => inSel(r[0]));
+  const note = 'Cell = highest frequency (GHz) at which at least one good unit of the program has a Vmin (ILAS Vmin columns); hover for the unit count. ' +
+    'FMIN columns carry no flow token: they are shown on the domain flow when the domain has a single flow' +
+    (O.flowlessAmbiguous.length ? `; ambiguous for ${esc(O.flowlessAmbiguous.join(', '))} (flow "-")` : '') + '. Bin is not part of the CSV (n/a - no data).';
+  $('#o-finfo').innerHTML = note;
+  if (!rows.length) { noData($('#o-flow'), NA + ': no ILAS Vmin columns for the selected programs.'); return; }
+  const ck = c => c === 'FMIN' ? 0 : (parseInt(c.replace(/\D/g, ''), 10) || 99);
+  const corners = [...new Set(rows.map(r => r[3]))].sort((a, b) => ck(a) - ck(b));
+  const g = {};
+  rows.forEach(([p, base, flow, corner, freq, n]) => { const k = p + '|' + base + '|' + flow; (g[k] ??= { p, base, flow, c: {} }).c[corner] = [freq, n]; });
+  const list = Object.values(g).sort((a, b) => a.p - b.p || a.base.localeCompare(b.base) || String(a.flow).localeCompare(String(b.flow), undefined, { numeric: true }));
+  let last = -1;
+  list.forEach(r => { r.first = r.p !== last; last = r.p; });
+  $('#o-flow').innerHTML = table(list, [
+    { h: 'Class test program', f: r => r.first ? esc(D.programs[r.p].name) : '', l: 1 }, { h: 'Domain', k: 'base', l: 1 }, { h: 'Flow', k: 'flow', l: 1 },
+    ...corners.map(c => ({ h: c, f: r => r.c[c] ? `<span title="${r.c[c][1]} units">${r.c[c][0]}</span>` : '<span class="muted">-</span>' }))]);
+}
+function renderOvw() { renderUnits(); renderUpmMedians(); renderCap(); renderFlow(); }
+
+/* ---------------- Vmin limiter analysis (ILAS) ---------------- */
+const MODPAL = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf',
+  '#aec7e8','#ffbb78','#98df8a','#ff9896','#c5b0d5','#c49c94','#f7b6d2','#dbdb8d','#9edae5','#393b79'];
+function renderPareto() {
+  const I = D.ilas, grid = $('#m-grid'), leg = $('#m-leg');
+  if (!I || !I.rows.length) { noData(grid, NA + ': no ILAS Vmin/Setter columns with limiter data in the CSV.'); leg.innerHTML = ''; $('#m-info').textContent = ''; return; }
+  const dsel = $('#v-dom').value, core = $('#v-core').value, byProg = true;
+  const A = {};
+  for (const [cell, mi, , , p, n] of I.rows) {
+    if (!inSel(p)) continue;
+    const c = I.cells[cell];
+    if (core !== 'all' && c[4] !== +core) continue;
+    const dn = I.doms[c[0]];
+    if (dsel !== 'all' && dn !== dsel) continue;
+    const a = A[dn] ??= { cats: {}, gs: new Set(), flows: new Set() };
+    if (c[3]) a.flows.add(c[3]);
+    const ct = a.cats[c[1] + '|' + c[2] + '|' + c[3]] ??= { ci: c[1], f: c[2], fl: c[3], g: {} };
+    const gk = byProg ? p : -1;
+    a.gs.add(gk);
+    const m = ct.g[gk] ??= {};
+    m[mi] = (m[mi] || 0) + n;
+  }
+  grid.innerHTML = '';
+  const used = new Set(), missing = [];
+  if (!I.doms.includes(dsel)) missing.push(dsel);
+  for (const dn of I.doms) {
+    if (dn !== dsel) continue;
+    const a = A[dn];
+    if (!a) { missing.push(dn); continue; }
+    const cats = Object.values(a.cats).sort((x, y) => x.ci - y.ci || x.f - y.f || String(x.fl).localeCompare(String(y.fl)));
+    const gs = [...a.gs].sort((x, y) => x - y), bw = byProg ? 16 : 28, gap = 10, catW = gs.length * bw + gap, PH = 180;
+    const M = { l: 40, r: byProg ? 60 : 8, t: 24, b: byProg ? 100 : 46 }, W = Math.max(300, M.l + M.r + cats.length * catW), H = M.t + PH + M.b;
+    const box = document.createElement('div');
+    box.style.cssText = 'overflow-x:auto;max-width:100%';
+    grid.appendChild(box);
+    const svg = el('svg', { width: W, height: H, viewBox: `0 0 ${W} ${H}` }, box);
+    el('text', { x: M.l, y: 15, 'font-size': 13, 'font-weight': 'bold' }, svg, dn + ' - ' + coreLabel(core) + ' (one bar per test program)');
+    for (const t of [0, 25, 50, 75, 100]) {
+      const y = M.t + PH - t / 100 * PH;
+      el('line', { x1: M.l, x2: W - M.r, y1: y, y2: y, stroke: '#e3e8ef' }, svg);
+      el('text', { x: M.l - 5, y: y + 4, 'text-anchor': 'end', 'font-size': 10, fill: '#44546a' }, svg, t + '%');
+    }
+    el('rect', { x: M.l, y: M.t, width: W - M.l - M.r, height: PH, fill: 'none', stroke: '#8393a8' }, svg);
+    cats.forEach((ct, i) => {
+      const x0 = M.l + i * catW + gap / 2;
+      gs.forEach((gk, j) => {
+        const m = ct.g[gk];
+        if (!m) return;
+        const tot = Object.values(m).reduce((s, v) => s + v, 0), bx = x0 + j * bw;
+        let yb = M.t + PH;
+        Object.keys(m).map(Number).sort((x, y) => x - y).forEach(mi => {
+          const h = m[mi] / tot * PH;
+          used.add(mi);
+          const r = el('rect', { x: bx, y: yb - h, width: bw - 1, height: h, fill: MODPAL[mi % MODPAL.length] }, svg);
+          el('title', {}, r, `${dn} ${I.corners[ct.ci]} ${ct.f} GHz${a.flows.size > 1 ? ' flow ' + ct.fl : ''}${byProg ? ' ' + shortProg(gk) : ''}: ${I.mods[mi]} ${m[mi]}/${tot} (${fmt(100 * m[mi] / tot, 1)}%)`);
+          yb -= h;
+        });
+        if (byProg) el('text', { transform: `translate(${bx + bw / 2},${M.t + PH + 8}) rotate(60)`, 'font-size': 9, fill: '#333' }, svg, shortProg(gk));
+      });
+      const cx = x0 + gs.length * bw / 2;
+      el('text', { x: cx, y: H - (catW >= 30 ? 20 : 8), 'text-anchor': 'middle', 'font-size': 10, fill: '#222' }, svg, I.corners[ct.ci] + (a.flows.size > 1 && ct.fl ? '/' + ct.fl : ''));
+      if (catW >= 30) el('text', { x: cx, y: H - 8, 'text-anchor': 'middle', 'font-size': 9, fill: '#6b7a8c' }, svg, ct.f);
+    });
+    cursorOn(svg, W, H, M, {
+      inv: (mx, my) => ({ dx: 0, dy: 100 * (M.t + PH - my) / PH }), xcat: true, ylab: '% of units',
+      hover: c => {
+        const i = Math.floor((c.mx - M.l) / catW), ct = cats[i];
+        if (!ct) return null;
+        const head = `${I.corners[ct.ci]} ${ct.f} GHz${a.flows.size > 1 && ct.fl ? ' flow ' + ct.fl : ''}`;
+        const j = Math.floor((c.mx - M.l - i * catW - gap / 2) / bw), m = ct.g[gs[j]];
+        if (j < 0 || !m) return { extra: [head] };
+        const tot = Object.values(m).reduce((s, v) => s + v, 0), ex = [head];
+        if (byProg) ex.push(shortProg(gs[j]));
+        let acc = 0;
+        for (const mi of Object.keys(m).map(Number).sort((x, y) => x - y)) {
+          const hi = acc + m[mi] / tot * 100;
+          if (c.dy >= acc && c.dy < hi) { ex.push(`${I.mods[mi]}: ${m[mi]}/${tot} (${fmt(100 * m[mi] / tot, 1)}%)`); break; }
+          acc = hi;
+        }
+        return { extra: ex };
+      }
+    });
+  }
+  leg.innerHTML = [...used].sort((a, b) => a - b).map(mi => `<span><span class="sw" style="background:${MODPAL[mi % MODPAL.length]}"></span>${esc(I.mods[mi])}</span>`).join('');
+  if (!grid.children.length) noData(grid, `${NA} for domain ${dsel}, ${coreLabel(core)} in the selected programs.`);
+  $('#m-info').innerHTML = `Share of good units whose Vmin limiter (setter instance) belongs to each module, per corner and frequency, for <b>${esc(dsel)}</b>, <b>${coreLabel(core)}</b>; one bar per selected test program (label under the bar). ` +
+    'Module is taken from the setter instance as delivered. Hover a segment for counts.' +
+    (missing.length ? ` ${NA} for: ${esc(missing.join(', '))}.` : '');
+}
+function renderPattern() {
+  const I = D.ilas, tbl = $('#l-tbl');
+  if (!I || !I.rows.length) { noData(tbl, NA + ': no ILAS Vmin/Setter columns with limiter data in the CSV.'); $('#l-info').textContent = ''; return; }
+  fillSelect('#l-cor', [{ v: 'all', t: 'All corners' }, ...I.corners.map(d => ({ v: d, t: d }))], true);
+  fillSelect('#l-mod', [{ v: 'all', t: 'All modules' }, ...I.mods.map((d, i) => ({ v: i, t: d }))], true);
+  fillSelect('#l-pl', [{ v: 'all', t: 'All plists' }, ...I.pls.map((d, i) => ({ v: i, t: d }))], true);
+  if (!I._t) { I._t = {}; for (const [c, p, n] of I.tot) I._t[c + '|' + p] = n; }
+  const fd = $('#v-dom').value, fc = $('#l-cor').value, fm = $('#l-mod').value, fp = $('#l-pl').value, fk = $('#v-core').value;
+  const byProg = true, minC = Math.max(1, +$('#l-min').value || 1);
+  const m = {};
+  for (const [cell, mi, li, pi, p, n] of I.rows) {
+    if (!inSel(p)) continue;
+    const c = I.cells[cell];
+    if ((fd !== 'all' && I.doms[c[0]] !== fd) || (fc !== 'all' && I.corners[c[1]] !== fc) || (fm !== 'all' && mi !== +fm) ||
+        (fp !== 'all' && li !== +fp) || (fk !== 'all' && c[4] !== +fk)) continue;
+    const g = byProg ? p : -1, k = cell + '|' + mi + '|' + li + '|' + pi + '|' + g;
+    (m[k] ??= { cell, mi, li, pi, g, n: 0 }).n += n;
+  }
+  const totOf = (cell, g) => {
+    if (g >= 0) return I._t[cell + '|' + g] || 0;
+    let s = 0; SELS.forEach(p => { s += I._t[cell + '|' + p] || 0; }); return s;
+  };
+  const all = Object.values(m).filter(r => r.n >= minC).map(r => {
+    const c = I.cells[r.cell], t = totOf(r.cell, r.g);
+    return { ...r, dom: I.doms[c[0]], cor: c[1], corner: I.corners[c[1]], f: c[2], core: c[4], tot: t, pct: t ? 100 * r.n / t : null };
+  }).sort((a, b) => a.dom.localeCompare(b.dom) || a.cor - b.cor || a.f - b.f || a.core - b.core || a.mi - b.mi || a.li - b.li || b.n - a.n);
+  const CAP = 200;
+  const rowsFor = p => all.filter(r => r.g === p).slice(0, CAP);
+  const capped = selProgs().filter(p => all.filter(r => r.g === p).length > CAP).length;
+  $('#l-info').innerHTML = `Domain <b>${esc(fd)}</b>, <b>${coreLabel(fk)}</b>; ${all.length} rows over the selected test programs` + (capped ? ` (first ${CAP} rows per program shown; narrow the filters)` : '') +
+    '. Pattern = limiting pattern from the LP column (vectors with more than 2 entries are per core: entry = core index; otherwise the first entry); NA = no pattern reported. ' +
+    '% of units = count / good units with a limiter in the same domain, corner, frequency and core; Max total = that denominator. Plist = tail of the setter instance name.';
+  tbl.innerHTML = table(partition(rowsFor, false), [
+    { h: 'Domain', k: 'dom', l: 1 }, { h: 'Corner', k: 'corner', l: 1 }, { h: 'Module', f: r => esc(I.mods[r.mi]), l: 1 },
+    { h: 'Plist', f: r => esc(I.pls[r.li]), l: 1 }, { h: 'Frequency GHz', k: 'f' }, { h: 'Core', k: 'core' },
+    { h: 'Limiting pattern', f: r => esc(I.pats[r.pi]), l: 1 },
+    { h: 'Count', k: 'n' }, { h: '% of units', f: r => fmt(r.pct, 1) }, { h: 'Max total', k: 'tot' }]);
+}
+
+/* ---------------- shared ---------------- */
+function renderUnmapped() {
+  $('#unm').querySelector('summary').textContent = `Unmapped / ambiguous tokens (${D.unmapped.length})`;
+  $('#unm-t').innerHTML = table(D.unmapped, [{ h: 'Family', k: 'family', l: 1 }, { h: 'Token / pattern', k: 'token', l: 1 },
+    { h: 'Count', k: 'count' }, { h: 'Reason', k: 'reason', l: 1 }, { h: 'Examples', k: 'examples', l: 1 }]);
+}
+function renderFoot() {
+  const s = D.status, u = s.upm.map(x => `${x.pu}: ${x.available ? 'UPM ok' : '<b class="warn">UPM missing</b>'}`).join(' | ');
+  const out = Object.entries(s.upmOutliers).map(([k, v]) => `${k} ${v.excluded}/${v.valid} excluded (UPM outside median+-3sigma)`).join('; ');
+  $('#foot').innerHTML = `Input: ${esc(s.input)} (modified ${s.modified}); generated ${s.generated}; rows used ${s.rowsUsed}/${s.rowsTotal}` +
+    (s.programFilter ? `; program filter ${esc(s.programFilter)}` : '') +
+    `<br>Columns: Vmin ${s.columns.vmin}, ILAS limiter ${s.columns.ilasVmin}, SICC at-ref ${s.columns.siccAtRef}, SICC raw class value ${s.columns.siccRawValue}, DTS ${s.columns.dts}` +
+    `<br>${u}${out ? '<br>' + out : ''}<br>Official-TP tokens: ${s.officialTokens.join(', ')}` +
+    ' (programs outside this list are tagged standard-name / other).';
+}
+function renderVminAll() { renderVmin(); renderPareto(); renderPattern(); }
+function renderAll() { renderOvw(); renderVminAll(); renderSicc(); renderDts(); }
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.t));
+});
+['#v-dom', '#v-f', '#v-core'].forEach(i => $(i).onchange = renderVminAll);
+['#s-fam', '#s-meas', '#s-log', '#s-tok', '#s-sub'].forEach(i => $(i).onchange = renderSicc);
+$('#d-dom').onchange = renderDts;
+['#o-cdom', '#o-cmeas', '#o-clog'].forEach(i => $(i).onchange = renderCap);
+['#l-cor', '#l-mod', '#l-pl', '#l-min'].forEach(i => $(i).onchange = renderPattern);
+initSel(); renderUnmapped(); renderFoot(); renderAll();
+const startTab = document.querySelector(`nav button[data-t="${location.hash.slice(1)}"]`);
+if (startTab) startTab.click();
+</script>
+</body>
+</html>

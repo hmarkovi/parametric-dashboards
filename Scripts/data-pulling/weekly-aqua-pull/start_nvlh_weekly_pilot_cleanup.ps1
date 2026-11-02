@@ -6,7 +6,10 @@ param(
     [int]$MaxWorkWeeks = 3,
     [string]$RetainedFolderName = "By-Class-TP-final",
     [string]$ManifestFolderName = "pilot_cleanup_manifests",
-    [switch]$DeleteOriginals
+    [switch]$DeleteOriginals,
+    [switch]$SkipValidation,
+    [string]$PythonExe = "",
+    [string]$ValidatorPath = ""
 )
 
 Set-StrictMode -Version Latest
@@ -117,28 +120,19 @@ function Get-FirstExistingColumnName {
     return $null
 }
 
-function Get-RowCompletenessScore {
+function ConvertTo-CellMap {
     param(
         [Parameter(Mandatory = $true)]
         [psobject]$Row
     )
 
-    $nonEmptyCount = 0
-    $ilasNonEmptyCount = 0
-
+    # Ordinal (case-sensitive) map so columns are never merged by accident.
+    $map = New-Object 'System.Collections.Generic.Dictionary[string,string]'
     foreach ($property in $Row.PSObject.Properties) {
-        $value = [string]$property.Value
-        if ([string]::IsNullOrWhiteSpace($value)) {
-            continue
-        }
-
-        $nonEmptyCount++
-        if ($property.Name -like 'ILAS_*') {
-            $ilasNonEmptyCount++
-        }
+        $map[$property.Name] = [string]$property.Value
     }
 
-    return ($ilasNonEmptyCount * 1000) + $nonEmptyCount
+    return $map
 }
 
 function New-RowFromHeaders {
@@ -146,17 +140,29 @@ function New-RowFromHeaders {
         [Parameter(Mandatory = $true)]
         [string[]]$Headers,
         [Parameter(Mandatory = $true)]
-        [psobject]$SourceRow
+        [object]$SourceRow
     )
 
     $map = [ordered]@{}
-    foreach ($header in $Headers) {
-        $property = $SourceRow.PSObject.Properties[$header]
-        if ($null -ne $property) {
-            $map[$header] = $property.Value
+    if ($SourceRow -is [System.Collections.IDictionary]) {
+        foreach ($header in $Headers) {
+            if ($SourceRow.ContainsKey($header)) {
+                $map[$header] = $SourceRow[$header]
+            }
+            else {
+                $map[$header] = ''
+            }
         }
-        else {
-            $map[$header] = ''
+    }
+    else {
+        foreach ($header in $Headers) {
+            $property = $SourceRow.PSObject.Properties[$header]
+            if ($null -ne $property) {
+                $map[$header] = $property.Value
+            }
+            else {
+                $map[$header] = ''
+            }
         }
     }
 
@@ -174,7 +180,11 @@ function Merge-RowsIntoRetainedFile {
         [Parameter(Mandatory = $true)]
         [string]$LotColumn,
         [Parameter(Mandatory = $true)]
-        [System.Collections.IList]$DecisionLog
+        [System.Collections.IList]$DecisionLog,
+        [string[]]$IncomingHeaders = @(),
+        [System.Collections.IList]$ConflictLog = $null,
+        [System.Collections.IList]$SkippedLog = $null,
+        [string]$ClassTp = ''
     )
 
     $existingRows = @()
@@ -186,14 +196,16 @@ function Merge-RowsIntoRetainedFile {
         }
     }
 
-    $incomingHeaders = @()
-    if ($IncomingRows.Count -gt 0) {
-        $incomingHeaders = @($IncomingRows[0].PSObject.Properties.Name)
+    # Header union: retained headers + headers of EVERY contributing source file (not only the first row),
+    # so a column that exists in any daily file can never be dropped.
+    $incomingHeaderList = @($IncomingHeaders)
+    if ($incomingHeaderList.Count -eq 0 -and $IncomingRows.Count -gt 0) {
+        $incomingHeaderList = @($IncomingRows[0].PSObject.Properties.Name)
     }
 
     $headers = New-Object System.Collections.Generic.List[string]
     $headerSeen = New-Object 'System.Collections.Generic.HashSet[string]'
-    foreach ($header in @($existingHeaders + $incomingHeaders)) {
+    foreach ($header in @($existingHeaders + $incomingHeaderList)) {
         if ($headerSeen.Add($header)) {
             $headers.Add($header) | Out-Null
         }
@@ -201,18 +213,24 @@ function Merge-RowsIntoRetainedFile {
 
     $rowByKey = @{}
     $keyOrder = New-Object System.Collections.Generic.List[string]
+    $stats = [ordered]@{ DuplicateKeys = 0; MergedKeys = 0; FilledCells = 0; OverwrittenCells = 0; SkippedRows = 0 }
 
-    foreach ($row in $existingRows) {
-        $key = ('{0}||{1}' -f ([string]$row.$VisualIdColumn).Trim().ToUpperInvariant(), ([string]$row.$LotColumn).Trim().ToUpperInvariant())
-        if (-not $rowByKey.ContainsKey($key)) {
-            $rowByKey[$key] = $row
-            $keyOrder.Add($key) | Out-Null
-        }
-    }
+    # Existing (older) rows first; a repeated key inside the retained file is merged with the same rule.
+    # Incoming rows arrive in ascending file-date order, so a later row is always newer than an earlier one.
+    $allSources = New-Object System.Collections.Generic.List[object]
+    foreach ($row in $existingRows) { $allSources.Add([pscustomobject]@{ Row = $row; Origin = 'retained' }) | Out-Null }
+    foreach ($row in $IncomingRows) { $allSources.Add([pscustomobject]@{ Row = $row; Origin = 'incoming' }) | Out-Null }
 
-    foreach ($row in $IncomingRows) {
-        $key = ('{0}||{1}' -f ([string]$row.$VisualIdColumn).Trim().ToUpperInvariant(), ([string]$row.$LotColumn).Trim().ToUpperInvariant())
+    foreach ($entry in $allSources) {
+        $row = $entry.Row
+        $vid = ([string]$row.$VisualIdColumn).Trim().ToUpperInvariant()
+        $lot = ([string]$row.$LotColumn).Trim().ToUpperInvariant()
+        $key = ('{0}||{1}' -f $vid, $lot)
         if ([string]::IsNullOrWhiteSpace($key.Replace('||', ''))) {
+            $stats.SkippedRows++
+            if ($null -ne $SkippedLog) {
+                $SkippedLog.Add([pscustomobject]@{ ClassTp = $ClassTp; Origin = $entry.Origin; Reason = 'BlankVisualIdAndLot' }) | Out-Null
+            }
             continue
         }
 
@@ -222,24 +240,57 @@ function Merge-RowsIntoRetainedFile {
             continue
         }
 
-        $existingRow = $rowByKey[$key]
-        $existingScore = Get-RowCompletenessScore -Row $existingRow
-        $incomingScore = Get-RowCompletenessScore -Row $row
-        if ($incomingScore -gt $existingScore) {
-            $rowByKey[$key] = $row
-            $DecisionLog.Add([pscustomobject]@{
-                Key = $key
-                Action = 'ReplacedWithMoreCompleteIncoming'
-                ExistingScore = $existingScore
-                IncomingScore = $incomingScore
-            }) | Out-Null
+        # Same VISUAL_ID + LOTFROMFS: newest non-empty cell wins, empty cells are filled from older values.
+        # A different LOTFROMFS produces a different key, so both rows are kept.
+        $stats.DuplicateKeys++
+        $current = $rowByKey[$key]
+        if ($current -isnot [System.Collections.IDictionary]) {
+            $current = ConvertTo-CellMap -Row $current
+            $rowByKey[$key] = $current
         }
-        else {
+
+        $filled = 0
+        $overwritten = 0
+        foreach ($property in $row.PSObject.Properties) {
+            $newValue = [string]$property.Value
+            if ($newValue.Length -eq 0) {
+                continue
+            }
+
+            $name = $property.Name
+            $oldValue = ''
+            if ($current.ContainsKey($name)) {
+                $oldValue = [string]$current[$name]
+            }
+
+            if ($oldValue.Length -eq 0) {
+                $current[$name] = $newValue
+                $filled++
+            }
+            elseif ($oldValue -cne $newValue) {
+                if ($null -ne $ConflictLog) {
+                    $ConflictLog.Add([pscustomobject]@{
+                        ClassTp = $ClassTp
+                        Key = $key
+                        Column = $name
+                        OlderValue = $oldValue
+                        NewerValue = $newValue
+                    }) | Out-Null
+                }
+                $current[$name] = $newValue
+                $overwritten++
+            }
+        }
+
+        if (($filled + $overwritten) -gt 0) {
+            $stats.MergedKeys++
+            $stats.FilledCells += $filled
+            $stats.OverwrittenCells += $overwritten
             $DecisionLog.Add([pscustomobject]@{
                 Key = $key
-                Action = 'KeptExisting'
-                ExistingScore = $existingScore
-                IncomingScore = $incomingScore
+                Action = 'MergedNewestWins'
+                FilledEmptyCells = $filled
+                OverwrittenCells = $overwritten
             }) | Out-Null
         }
     }
@@ -261,6 +312,11 @@ function Merge-RowsIntoRetainedFile {
     return [pscustomobject]@{
         HeaderCount = $headers.Count
         RowCount = $keyOrder.Count
+        DuplicateKeys = $stats.DuplicateKeys
+        MergedKeys = $stats.MergedKeys
+        FilledCells = $stats.FilledCells
+        OverwrittenCells = $stats.OverwrittenCells
+        SkippedRows = $stats.SkippedRows
     }
 }
 
@@ -323,6 +379,30 @@ if ($selectedWeeks.Count -eq 0) {
     throw 'At least one work-week must be provided.'
 }
 
+# "Newest wins" is only correct when weeks are merged oldest -> newest, regardless of the order passed in.
+$selectedWeeks = @($selectedWeeks | Sort-Object -Property @{ Expression = {
+    if ($_ -match '^WW(?<w>\d+)_(?<y>\d{4})$') { ([int]$Matches['y'] * 100) + [int]$Matches['w'] } else { 999999 }
+} })
+
+if (-not $SkipValidation.IsPresent) {
+    if ([string]::IsNullOrWhiteSpace($ValidatorPath)) {
+        $ValidatorPath = Join-Path $PSScriptRoot 'validate_weekly_cleanup.py'
+    }
+    if ([string]::IsNullOrWhiteSpace($PythonExe)) {
+        $pythonCmd = Get-Command python.exe -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($pythonCmd) { $PythonExe = $pythonCmd.Source }
+    }
+    if (-not (Test-Path -LiteralPath $ValidatorPath -PathType Leaf)) {
+        throw "Validator not found: $ValidatorPath (use -SkipValidation to bypass; -DeleteOriginals is then refused)."
+    }
+    if ([string]::IsNullOrWhiteSpace($PythonExe) -or -not (Test-Path -LiteralPath $PythonExe -PathType Leaf)) {
+        throw 'Python not found for the validator. Pass -PythonExe or use -SkipValidation (-DeleteOriginals is then refused).'
+    }
+}
+elseif ($DeleteOriginals.IsPresent) {
+    throw '-DeleteOriginals requires validation; remove -SkipValidation.'
+}
+
 $retainedRoot = Join-Path $WeeklyRunsDir $RetainedFolderName
 $manifestRoot = Join-Path $retainedRoot $ManifestFolderName
 foreach ($path in @($retainedRoot, $manifestRoot)) {
@@ -358,12 +438,17 @@ foreach ($weekKey in $selectedWeeks) {
         RetainedFilesTouched = New-Object System.Collections.Generic.List[string]
         SkippedFiles = New-Object System.Collections.Generic.List[string]
         DuplicateDecisions = New-Object System.Collections.Generic.List[object]
+        SkippedRows = New-Object System.Collections.Generic.List[object]
+        Validation = $null
         DeleteCandidates = New-Object System.Collections.Generic.List[string]
         ClassTpRowCounts = New-Object System.Collections.Generic.List[object]
     }
+    $weekConflicts = New-Object System.Collections.Generic.List[object]
 
     $weekRowsByTp = @{}
     $weekSourceFilesByTp = @{}
+    $weekHeadersByTp = @{}
+    $weekColumnsByTp = @{}
 
     foreach ($file in $finalFiles) {
         Write-Host ('Reading {0}' -f $file.Name)
@@ -388,26 +473,53 @@ foreach ($weekKey in $selectedWeeks) {
             $programName = [string]$row.$programColumn
             $tpKey = Normalize-ClassTpKey -ProgramName $programName
             if ([string]::IsNullOrWhiteSpace($tpKey)) {
+                $weekManifest.SkippedRows.Add([pscustomobject]@{
+                    File = $file.Name
+                    Reason = $(if ([string]::IsNullOrWhiteSpace($programName)) { 'BlankProgramName' } else { 'UnmappedProgramName' })
+                    ProgramName = $programName
+                    VisualId = [string]$row.$visualIdColumn
+                    Lot = [string]$row.$lotColumn
+                }) | Out-Null
                 continue
             }
 
             if (-not $weekRowsByTp.ContainsKey($tpKey)) {
                 $weekRowsByTp[$tpKey] = New-Object System.Collections.Generic.List[object]
                 $weekSourceFilesByTp[$tpKey] = New-Object 'System.Collections.Generic.HashSet[string]'
+                $weekHeadersByTp[$tpKey] = New-Object System.Collections.Generic.List[string]
+                $weekColumnsByTp[$tpKey] = New-Object 'System.Collections.Generic.HashSet[string]'
             }
 
             $weekRowsByTp[$tpKey].Add($row) | Out-Null
-            [void]$weekSourceFilesByTp[$tpKey].Add($file.Name)
+            if ($weekSourceFilesByTp[$tpKey].Add($file.Name)) {
+                # Every contributing file's headers are unioned so no column is lost.
+                foreach ($h in $headers) {
+                    if ($weekColumnsByTp[$tpKey].Add($h)) {
+                        $weekHeadersByTp[$tpKey].Add($h) | Out-Null
+                    }
+                }
+            }
         }
 
         $weekManifest.DeleteCandidates.Add($file.FullName) | Out-Null
     }
 
+    # Snapshot of the retained files that are about to change; the validator uses it as the baseline.
+    $snapshotDir = Join-Path ([System.IO.Path]::GetTempPath()) ('premerge_{0}_{1}' -f $weekKey, [guid]::NewGuid().ToString('N'))
+    New-Item -ItemType Directory -Path $snapshotDir | Out-Null
+    foreach ($tpKey in $weekRowsByTp.Keys) {
+        $existingPath = Join-Path $retainedRoot ('{0}.csv' -f $tpKey)
+        if (Test-Path -LiteralPath $existingPath -PathType Leaf) {
+            Copy-Item -LiteralPath $existingPath -Destination (Join-Path $snapshotDir ('{0}.csv' -f $tpKey)) -Force
+        }
+    }
+
+    $weekSkippedMergeRows = New-Object System.Collections.Generic.List[object]
     foreach ($tpKey in ($weekRowsByTp.Keys | Sort-Object)) {
         $retainedCsvPath = Join-Path $retainedRoot ('{0}.csv' -f $tpKey)
         $incomingRows = $weekRowsByTp[$tpKey].ToArray()
         Write-Host ('Writing {0} rows to {1}' -f $incomingRows.Count, (Split-Path $retainedCsvPath -Leaf))
-        $mergeResult = Merge-RowsIntoRetainedFile -OutputCsvPath $retainedCsvPath -IncomingRows $incomingRows -VisualIdColumn $visualIdColumn -LotColumn $lotColumn -DecisionLog $weekManifest.DuplicateDecisions
+        $mergeResult = Merge-RowsIntoRetainedFile -OutputCsvPath $retainedCsvPath -IncomingRows $incomingRows -VisualIdColumn $visualIdColumn -LotColumn $lotColumn -DecisionLog $weekManifest.DuplicateDecisions -IncomingHeaders $weekHeadersByTp[$tpKey].ToArray() -ConflictLog $weekConflicts -SkippedLog $weekSkippedMergeRows -ClassTp $tpKey
         $weekManifest.RetainedFilesTouched.Add((Split-Path $retainedCsvPath -Leaf)) | Out-Null
         $weekManifest.ClassTpRowCounts.Add([pscustomobject]@{
             ClassTp = $tpKey
@@ -415,17 +527,50 @@ foreach ($weekKey in $selectedWeeks) {
             SourceRowCount = $incomingRows.Count
             RetainedRowCount = $mergeResult.RowCount
             HeaderCount = $mergeResult.HeaderCount
+            DuplicateKeys = $mergeResult.DuplicateKeys
+            FilledEmptyCells = $mergeResult.FilledCells
+            OverwrittenCells = $mergeResult.OverwrittenCells
+            SkippedRows = $mergeResult.SkippedRows
         }) | Out-Null
     }
+    foreach ($skipped in $weekSkippedMergeRows) { $weekManifest.SkippedRows.Add($skipped) | Out-Null }
 
     foreach ($helper in @($cleanFiles + $rawFiles + $ilasDirectories)) {
         $weekManifest.DeleteCandidates.Add($helper.FullName) | Out-Null
     }
 
+    $conflictsPath = Join-Path $manifestRoot ('{0}_conflicts.csv' -f $weekKey)
+    if ($weekConflicts.Count -gt 0) {
+        $weekConflicts | Export-Csv -LiteralPath $conflictsPath -NoTypeInformation -Encoding UTF8
+    }
+    elseif (Test-Path -LiteralPath $conflictsPath) {
+        Remove-Item -LiteralPath $conflictsPath -Force
+    }
+    $weekManifest.ConflictCount = $weekConflicts.Count
+
+    # Independent validation of this week's merge (source files + snapshot -> retained).
+    $validationPassed = $true
+    if (-not $SkipValidation.IsPresent) {
+        $reportPath = Join-Path $manifestRoot ('{0}_validation.json' -f $weekKey)
+        $validatorArgs = @($ValidatorPath, '--retained-dir', $retainedRoot, '--baseline-dir', $snapshotDir, '--report', $reportPath, '--label', $weekKey, '--sources')
+        $validatorArgs += @($finalFiles | ForEach-Object { $_.FullName })
+        Write-Host ('Validating {0}...' -f $weekKey)
+        & $PythonExe @validatorArgs
+        $validationPassed = ($LASTEXITCODE -eq 0)
+        $weekManifest.Validation = [ordered]@{ Passed = $validationPassed; ReportPath = $reportPath }
+        if ($validationPassed) {
+            Write-Host ('Validation PASSED for {0}' -f $weekKey) -ForegroundColor Green
+        }
+        else {
+            Write-Warning ('Validation FAILED for {0}; see {1}. Originals are NOT deleted.' -f $weekKey, $reportPath)
+        }
+    }
+    Remove-Item -LiteralPath $snapshotDir -Recurse -Force -ErrorAction SilentlyContinue
+
     $manifestPath = Join-Path $manifestRoot ('{0}.json' -f $weekKey)
     [pscustomobject]$weekManifest | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
-    if ($DeleteOriginals.IsPresent) {
+    if ($DeleteOriginals.IsPresent -and $validationPassed) {
         foreach ($candidate in ($weekManifest.DeleteCandidates | Select-Object -Unique)) {
             if (Test-Path -LiteralPath $candidate) {
                 Remove-Item -LiteralPath $candidate -Recurse -Force
@@ -440,7 +585,9 @@ foreach ($weekKey in $selectedWeeks) {
         RawCount = $rawFiles.Count
         IlasDirCount = $ilasDirectories.Count
         RetainedFilesTouched = (@($weekManifest.RetainedFilesTouched | Select-Object -Unique)).Count
-        DeletedOriginals = $DeleteOriginals.IsPresent
+        DeletedOriginals = ($DeleteOriginals.IsPresent -and $validationPassed)
+        ValidationPassed = $validationPassed
+        Conflicts = $weekConflicts.Count
         ManifestPath = $manifestPath
     }) | Out-Null
 }
