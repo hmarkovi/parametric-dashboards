@@ -37,7 +37,7 @@ import build_parametric_tabs as builder  # noqa: E402  (column discovery shared 
 DEFAULT_CSV_DIR = Path(r"R:\Products\NVL\NVL-AX\Weekly data pull\By-Class-TP-final")
 DEFAULT_STORE = Path(r"R:\Products\NVL\NVL-AX\Weekly data pull\Parquet_store")
 DEFAULT_RETENTION_WEEKS = 3
-KEEP_FOREVER_DEFAULT = ["25E"]  # pre-PRQ programs whose CSV is never deleted
+KEEP_FOREVER_DEFAULT: list[str] = []  # TP tokens whose CSV is never deleted; to be defined by the owner
 KEY_COLS = ("VISUAL_ID", "LOTFROMFS")  # same key as the weekly merge engine
 STALE_LOCK_SECONDS = 6 * 3600
 
