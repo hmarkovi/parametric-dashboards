@@ -10,7 +10,8 @@ Subcommands
                (newest non-empty cell wins, empty cells are filled from older rows, a different lot keeps both rows), so a CSV
                that is later deleted never removes data from the store.
     retention  Lists CSVs whose last update is older than --weeks (default 3).  Report only; --apply deletes a CSV and only when
-               the Parquet partition holds every key of the CSV and the TP is not in the keep-forever list.
+               the Parquet partition holds every key of the CSV, the TP is not in the keep-forever list, and the TP was not
+               released before PRQ+2WW (--keep-released-before; those CSVs are kept forever; unknown release date = keep).
     report     Builds the single HTML (all TPs) from the store with build_parametric_tabs.py.
     run        ingest + retention report + report.
     status     Prints the manifest summary.
@@ -37,7 +38,13 @@ import build_parametric_tabs as builder  # noqa: E402  (column discovery shared 
 DEFAULT_CSV_DIR = Path(r"R:\Products\NVL\NVL-AX\Weekly data pull\By-Class-TP-final")
 DEFAULT_STORE = Path(r"R:\Products\NVL\NVL-AX\Weekly data pull\Parquet_store")
 DEFAULT_RETENTION_WEEKS = 3
-KEEP_FOREVER_DEFAULT: list[str] = []  # TP tokens whose CSV is never deleted; to be defined by the owner
+KEEP_FOREVER_DEFAULT: list[str] = []  # extra TP tokens whose CSV is never deleted
+# Rule: the CSV of every Class TP released BEFORE PRQ+2WW is kept forever; later TPs follow the retention window.
+# Cutoff = Atlas 'Nova Lake AX Product' [A1] PRQ ww27'27 + 2WW = ww29'27 (ISO Monday). Atlas has no [A0] PRQ for AX.
+KEEP_RELEASED_BEFORE_DEFAULT = "2027-07-19"
+# TP release dates (columns: tp, release_date) written by the TP characterization sweep.  A TP with no known
+# release date is kept (never deleted).
+DEFAULT_RELEASE_DATES = Path(r"R:\Products\NVL\NVL-AX\Weekly data pull\TP_characterization.csv")
 KEY_COLS = ("VISUAL_ID", "LOTFROMFS")  # same key as the weekly merge engine
 STALE_LOCK_SECONDS = 6 * 3600
 
@@ -215,9 +222,26 @@ def cmd_ingest(args) -> int:
 
 
 # ------------------------------------------------------------------ retention
-def retention_report(store: Path, csv_dir: Path, weeks: int, keep: list[str], apply: bool) -> list[dict]:
+def load_release_dates(path: Path) -> dict[str, dt.date]:
+    if not path.exists():
+        return {}
+    df = pd.read_csv(path, dtype=str)
+    cols = {c.lower(): c for c in df.columns}
+    if "tp" not in cols or "release_date" not in cols:
+        return {}
+    out = {}
+    for tp, d in zip(df[cols["tp"]], df[cols["release_date"]]):
+        d = pd.to_datetime(d, errors="coerce")
+        if isinstance(tp, str) and not pd.isna(d):
+            out[tp] = d.date()
+    return out
+
+
+def retention_report(store: Path, csv_dir: Path, weeks: int, keep: list[str], apply: bool,
+                     keep_before: dt.date | None = None, release_dates: dict[str, dt.date] | None = None) -> list[dict]:
     manifest = load_manifest(store)
     now = dt.datetime.now()
+    release_dates = release_dates or {}
     rows = []
     for tp, e in sorted(manifest["tps"].items()):
         src = Path(e.get("source", csv_dir / f"{tp}.csv"))
@@ -228,6 +252,10 @@ def retention_report(store: Path, csv_dir: Path, weeks: int, keep: list[str], ap
         if age_days > weeks * 7:
             if any(tok.upper() in tp.upper() for tok in keep):
                 row["action"] = "keep (keep-forever program)"
+            elif keep_before is not None and tp not in release_dates:
+                row["action"] = "keep (release date unknown)"
+            elif keep_before is not None and release_dates[tp] < keep_before:
+                row["action"] = f"keep (released {release_dates[tp]} before PRQ+2WW {keep_before})"
             elif not e.get("verified") or not part_path(store, tp).exists():
                 row["action"] = "keep (Parquet not verified)"
             elif not csv_keys(src) <= part_keys(store, tp):
@@ -242,7 +270,9 @@ def retention_report(store: Path, csv_dir: Path, weeks: int, keep: list[str], ap
 
 
 def cmd_retention(args) -> int:
-    rows = retention_report(Path(args.store), Path(args.csv_dir), args.weeks, args.keep_forever, args.apply)
+    keep_before = dt.date.fromisoformat(args.keep_released_before) if args.keep_released_before else None
+    rows = retention_report(Path(args.store), Path(args.csv_dir), args.weeks, args.keep_forever, args.apply,
+                            keep_before, load_release_dates(Path(args.release_dates)))
     for r in rows:
         print(f"{r['tp']}: last update {r['last_update']} ({r['age_days']} d) -> {r['action']}")
     if not rows:
@@ -296,6 +326,9 @@ def main() -> int:
         p.add_argument("--store", default=str(DEFAULT_STORE))
         p.add_argument("--weeks", type=int, default=DEFAULT_RETENTION_WEEKS, help="retention window counted from the TP's last update")
         p.add_argument("--keep-forever", nargs="*", default=KEEP_FOREVER_DEFAULT, help="program tokens whose CSV is never deleted")
+        p.add_argument("--keep-released-before", default=KEEP_RELEASED_BEFORE_DEFAULT,
+                       help="YYYY-MM-DD (PRQ+2WW): CSVs of TPs released before this date are kept forever; '' disables the rule")
+        p.add_argument("--release-dates", default=str(DEFAULT_RELEASE_DATES), help="CSV with columns tp, release_date")
         p.add_argument("--apply", action="store_true", help="retention: actually delete eligible CSVs (default is report only)")
         p.add_argument("--max-units", type=int, default=None, help="report: cap on plotted units (see build_parametric_tabs.py)")
         p.set_defaults(fn=fn)
