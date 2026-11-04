@@ -37,6 +37,9 @@
   .ms-pop{position:absolute;z-index:30;left:0;top:100%;background:#fff;color:#1d2733;border:1px solid #8393a8;padding:6px 10px;max-height:380px;overflow:auto;min-width:460px;box-shadow:0 3px 10px rgba(0,0,0,.25)}
   .ms-pop .acts{display:flex;gap:8px;margin-bottom:6px;padding-bottom:6px;border-bottom:1px solid #ccd5e1}
   .ms-pop .acts button{font-size:12px;cursor:pointer}
+  .ms-pop .acts button.on{background:#0b5cad;color:#fff;border-color:#0b5cad}
+  .ms-pop .acts input{flex:1;font-size:12px;padding:2px 6px;min-width:160px}
+  .ms-pop .acts .cnt{font-size:12px;color:#8393a8;align-self:center;white-space:nowrap}
   .ms-pop label{display:flex;gap:6px;align-items:center;padding:2px 0;white-space:nowrap}
   .facets{display:flex;flex-wrap:wrap;gap:6px;align-items:flex-start}
   .facets>div{border:1px solid #d5dde8;background:#fff}
@@ -171,7 +174,8 @@
 <footer id="foot"></footer>
 
 <script>
-const D = /*__DATA__*/null;
+const D0 = /*__DATA__*/null;   // data as generated (one block per test program)
+let D = D0;                     // data the tabs render: D0, or the aggregated one-sample copy (see buildAgg)
 const NS = 'http://www.w3.org/2000/svg';
 const $ = s => document.querySelector(s);
 const PAL = ['#1f77b4','#ff7f0e','#2ca02c','#d62728','#9467bd','#8c564b','#e377c2','#7f7f7f','#bcbd22','#17becf'];
@@ -479,23 +483,105 @@ function boxStrip(container, cats, o) {
 }
 
 /* ---------------- Class TP selector ---------------- */
+let SEL0 = new Set();   // programs ticked in the dropdown (indices into D0.programs)
+let AGG = false;        // true: the ticked programs are analysed as ONE pooled sample in every tab
+/* Aggregate mode: a copy of the data in which the ticked programs are merged into a single program (index 0), so every tab
+   (Overview, Vmin, SICC, DTS, limiter) analyses them as one sample. Unticked programs are dropped. */
+function buildAgg(src, sel) {
+  const has = p => sel.has(p), A = { ...src }, S = src.sicc, O = src.overview, I = src.ilas;
+  const ps = [...sel].map(i => src.programs[i]);
+  A.programs = [{ name: `Aggregated ${ps.length} TP${ps.length === 1 ? '' : 's'}`, tag: 'aggregate',
+    units: ps.reduce((a, p) => a + p.units, 0), shown: ps.reduce((a, p) => a + p.shown, 0) }];
+  const to0 = (x, k) => { const y = x.slice(); y[k] = 0; return y; };
+  A.vmin = {};
+  for (const dn of Object.keys(src.vmin)) {
+    const d = src.vmin[dn], pts = {};
+    for (const key of Object.keys(d.pts)) { const a = d.pts[key].filter(x => has(x[2])).map(x => to0(x, 2)); if (a.length) pts[key] = a; }
+    A.vmin[dn] = { ...d, pts };
+  }
+  const mergeS2t = (rows, kf) => {
+    const g = {};
+    rows.filter(r => has(r.p)).forEach(r => (g[r[kf]] ??= []).push(r));
+    return Object.values(g).map(rs => {
+      const n = rs.reduce((a, r) => a + r.n, 0), med = rs.reduce((a, r) => a + r.med * r.n, 0) / n;
+      const min = Math.min(...rs.map(r => r.min)), max = Math.max(...rs.map(r => r.max));
+      return { ...rs[0], p: 0, n, med, min, max, static: max - min <= 1e-3 * Math.abs(med) };
+    });
+  };
+  A.sicc = { ...S, series: {}, s2t: mergeS2t(S.s2t || [], 'd'), s2tDom: mergeS2t(S.s2tDom || [], 'dom') };
+  for (const k of Object.keys(S.series)) A.sicc.series[k] = { ...S.series[k], d: S.series[k].d.filter(x => has(x[1])).map(x => to0(x, 1)) };
+  A.dts = {};
+  for (const dn of Object.keys(src.dts)) A.dts[dn] = src.dts[dn].map(g => {
+    const v = []; g.v.forEach((x, i) => { if (has(g.p[i])) v.push(x); });
+    return { ...g, v, p: v.map(() => 0) };
+  });
+  const us = O.units.filter(u => has(u.p));
+  const upm = {};
+  for (const l of Object.keys(O.upm)) {
+    const u = O.upm[l], x = [], p = [];
+    u.p.forEach((q, i) => { if (has(q)) { x.push(u.x[i]); p.push(0); } });
+    upm[l] = { ...u, x, p };
+  }
+  const fm = new Map();   // flow cell: highest frequency over the ticked programs; unit count = units at that frequency
+  O.flow.forEach(([p, base, flow, corner, freq, n]) => {
+    if (!has(p)) return;
+    const k = [base, flow, corner].join('\u0001'), cur = fm.get(k);
+    if (!cur || freq > cur[4]) fm.set(k, [0, base, flow, corner, freq, n]); else if (freq === cur[4]) cur[5] += n;
+  });
+  A.overview = { ...O, units: [{ p: 0, rows: us.reduce((a, u) => a + u.rows, 0), good: us.reduce((a, u) => a + u.good, 0) }], upm, flow: [...fm.values()] };
+  if (I) {
+    const rm = new Map(), tm = new Map();
+    for (const [c, mi, li, pi, p, n] of I.rows) {
+      if (!has(p)) continue;
+      const k = c + '|' + mi + '|' + li + '|' + pi, cur = rm.get(k);
+      if (cur) cur[5] += n; else rm.set(k, [c, mi, li, pi, 0, n]);
+    }
+    for (const [c, p, n] of I.tot) if (has(p)) tm.set(c, (tm.get(c) || 0) + n);
+    A.ilas = { ...I, rows: [...rm.values()], tot: [...tm].map(([c, n]) => [c, 0, n]) };
+    delete A.ilas._t;
+  }
+  return A;
+}
 function initSel() {
   const pop = $('#tp-pop');
-  pop.innerHTML = '<div class="acts"><button id="tp-all">Select all</button><button id="tp-none">Clear</button></div>' +
-    D.programs.map((p, i) => `<label><input type="checkbox" data-i="${i}" checked> ${esc(p.name)} <span class="muted">[${esc(p.tag)}] n=${p.units}${p.shown < p.units ? ` (plotted ${p.shown})` : ''}</span></label>`).join('');
-  const boxes = () => [...pop.querySelectorAll('input[type=checkbox]')];
+  const order = D0.programs.map((p, i) => i).sort((a, b) =>
+    D0.programs[a].name.localeCompare(D0.programs[b].name, undefined, { numeric: true, sensitivity: 'base' }) || a - b);   // A-Z
+  pop.innerHTML = '<div class="acts"><input type="search" id="tp-q" placeholder="Type to find a TP (e.g. 25h00, 25H0)" autocomplete="off">' +
+    '<span class="cnt" id="tp-cnt"></span></div>' +
+    '<div class="acts"><button id="tp-all">Select all</button><button id="tp-none">Clear</button>' +
+    '<button id="tp-agg" title="Analyse all ticked test programs as ONE sample (pooled) in every tab">Aggregate all as 1 sample: off</button></div>' +
+    '<div id="tp-list">' + order.map(i => { const p = D0.programs[i];
+      return `<label><input type="checkbox" data-i="${i}" checked> ${esc(p.name)} <span class="muted">[${esc(p.tag)}] n=${p.units}${p.shown < p.units ? ` (plotted ${p.shown})` : ''}</span></label>`; }).join('') + '</div>';
+  const boxes = () => [...pop.querySelectorAll('#tp-list input[type=checkbox]')];
+  const shown = () => boxes().filter(b => b.parentElement.style.display !== 'none');
   const setSel = () => {
-    SELS = new Set(boxes().filter(b => b.checked).map(b => +b.dataset.i));
-    const units = D.programs.reduce((a, p, i) => a + (SELS.has(i) ? p.units : 0), 0);
-    $('#tp-sum').textContent = SELS.size === D.programs.length ? `All programs (${units} units)` :
-      SELS.size === 0 ? 'No program selected' :
-      SELS.size === 1 ? `${D.programs[[...SELS][0]].name}  n=${units}` : `${SELS.size} of ${D.programs.length} programs (${units} units)`;
+    SEL0 = new Set(boxes().filter(b => b.checked).map(b => +b.dataset.i));
+    const units = D0.programs.reduce((a, p, i) => a + (SEL0.has(i) ? p.units : 0), 0), n = D0.programs.length;
+    if (AGG && SEL0.size) { D = buildAgg(D0, SEL0); SELS = new Set([0]); } else { D = D0; SELS = new Set(SEL0); }
+    $('#tp-sum').textContent = SEL0.size === 0 ? 'No program selected' :
+      AGG ? `AGGREGATED: ${SEL0.size === n ? 'all ' + n : SEL0.size + ' of ' + n} programs as 1 sample (${units} units)` :
+      SEL0.size === n ? `All programs (${units} units)` :
+      SEL0.size === 1 ? `${D0.programs[[...SEL0][0]].name}  n=${units}` : `${SEL0.size} of ${n} programs (${units} units)`;
+    $('#tp-agg').textContent = 'Aggregate all as 1 sample: ' + (AGG ? 'ON' : 'off');
+    $('#tp-agg').classList.toggle('on', AGG);
+  };
+  const filt = () => {
+    const q = $('#tp-q').value.trim().toLowerCase();
+    boxes().forEach(b => { b.parentElement.style.display = !q || b.parentElement.textContent.toLowerCase().includes(q) ? '' : 'none'; });
+    const k = shown().length;
+    $('#tp-cnt').textContent = q ? `${k} of ${boxes().length} shown` : `${boxes().length} programs`;
+    $('#tp-all').textContent = q ? 'Select shown' : 'Select all';
+    $('#tp-none').textContent = q ? 'Clear shown' : 'Clear';
   };
   boxes().forEach(b => b.onchange = () => { setSel(); renderAll(); });
-  $('#tp-all').onclick = () => { boxes().forEach(b => b.checked = true); setSel(); renderAll(); };
-  $('#tp-none').onclick = () => { boxes().forEach(b => b.checked = false); setSel(); renderAll(); };
+  $('#tp-all').onclick = () => { shown().forEach(b => b.checked = true); setSel(); renderAll(); };
+  $('#tp-none').onclick = () => { shown().forEach(b => b.checked = false); setSel(); renderAll(); };
+  $('#tp-agg').onclick = () => { AGG = !AGG; setSel(); renderAll(); };
+  $('#tp-q').oninput = filt;
+  $('#tp-q').onkeydown = e => { if (e.key === 'Enter') e.preventDefault(); };
+  $('#tp-ms').addEventListener('toggle', () => { if ($('#tp-ms').open) { $('#tp-q').focus(); $('#tp-q').select(); } });
   document.addEventListener('click', e => { if (!$('#tp-ms').contains(e.target)) $('#tp-ms').open = false; });
-  setSel();
+  filt(); setSel();
 }
 
 /* ---------------- Vmin ---------------- */
@@ -1073,7 +1159,7 @@ function renderPattern() {
 /* ---------------- TP characterization ---------------- */
 function renderTpc() {
   const T = D.tpchar || { rows: [], missing: true, source: '' };
-  const selNames = [...SELS].map(p => String(D.programs[p].name).toUpperCase());
+  const selNames = [...SEL0].map(p => String(D0.programs[p].name).toUpperCase());
   const isSel = r => r.tp_key_s && selNames.some(n => n.startsWith(r.tp_key_s.toUpperCase()) || r.tp_key_s.toUpperCase().startsWith(n));
   const only = $('#t-only').checked;
   const rows = T.rows.filter(r => !only || isSel(r));
@@ -1114,7 +1200,7 @@ function renderFoot() {
     ' (programs outside this list are tagged standard-name / other).';
 }
 function renderVminAll() { renderVmin(); renderPareto(); renderPattern(); }
-function renderAll() { renderOvw(); renderVminAll(); renderSicc(); renderDts(); renderTpc(); renderTpc(); }
+function renderAll() { renderOvw(); renderVminAll(); renderSicc(); renderDts(); renderTpc(); }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.t));
