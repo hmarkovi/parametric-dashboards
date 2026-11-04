@@ -34,7 +34,7 @@ import pandas as pd
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUT_DIR = Path(r"R:\Products\NVL\NVL-AX\Weekly data pull")
 DEFAULT_FUSE_DIR = Path(r"I:\fuse\release\NVL\NVL_AX")
-DEFAULT_SUBJECT_REGEX = r"Full Daily Build Report\s*-\s*Class_NVL"
+DEFAULT_SUBJECT_REGEX = r"^(?!.*AHMT).*NVLAX"  # every NVLAX TP mail except AHMT reports
 MAIL_FOLDER = "TP Build Reports"
 ATLAS_PROJECTS = {"AX": "Nova Lake AX Product"}
 # agreed mapping: PO -> [A0] PO Start ; EVS / EVS_Plus1 / EVS2 -> [A0] ES1 ; PreSi -> none
@@ -103,10 +103,17 @@ def parse_mail(html: str) -> dict:
                 if cells[j] and cells[j] not in LABELS:
                     fields[c] = cells[j]
                     break
-    m = re.search(r"Built Date\s*(\d{4}-\d{2}-\d{2})", text)
-    fields["_built_date"] = m.group(1) if m else ""
-    m = re.search(r"Built to\s*([^\n]+)", text)
+    m = re.search(r"Built Date\s*(\d{4}-\d{2}-\d{2})", text) or re.search(
+        r"Release Date\s*(\d{4}-\d{2}-\d{2})|Released to[^\n]*\n\s*(\d{4}-\d{2}-\d{2})", text)
+    fields["_built_date"] = next((g for g in m.groups() if g), "") if m else ""
+    m = re.search(r"(?:Built|Release|Released|TP released) to\s*:?\s*([^\n]+?)(?:Built Date|Release Date|\n|$)", text)
     fields["_built_to"] = m.group(1).strip() if m else ""
+    if not fields.get("Fuse Path"):  # older layouts list the package fuse without a 'Fuse Path' label
+        mf = re.search(r"I:[/\\]fuse[/\\]release[/\\]NVL[/\\]NVL_AX[/\\](NVL_AX_[^\s/\\]+)", text)
+        if mf:
+            fields["Fuse Path"] = "I:/fuse/release/NVL/NVL_AX/" + mf.group(1)
+    mp = re.search(r"\nPatch\n([^\n]+)", text)
+    fields["_patch"] = mp.group(1).strip() if mp else ""
 
     # change list: [PR, title, submitter, url] anchored on the github URL
     changes, repo_tags = [], []
@@ -128,6 +135,20 @@ def parse_mail(html: str) -> dict:
         if mu and i >= 3:
             changes.append({"pr": int(mu.group(2)), "title": nonblank[i - 2], "by": nonblank[i - 1],
                             "repo": mu.group(1)})
+    for line in text.split("\n"):  # older layouts put all REPO lines in one cell
+        mt = re.match(r"REPO:\s*(\S+)\s*(?:-\s*Built from (?:TAG|branch):)?\s*(\S+)", line.strip())
+        if mt:
+            tag = f"{mt.group(1)}@{mt.group(2)}"
+            if tag not in repo_tags:
+                repo_tags.append(tag)
+    if not changes:  # older layout: free-text change list ('Test Program Change List Including FBIN ...')
+        mc = re.search(r"Test Program Change List[^\n]*\n(.*?)(?:\nCompliance report|\nSupported Device|\nThank you|$)",
+                       text, re.S)
+        if mc:
+            for seg in re.split(r"\.\s|\s\.(?=[A-Z])|\n|[^\x00-\x7f]", mc.group(1)):
+                seg = seg.strip(" .")
+                if len(seg) > 8 and not seg.startswith("REPO:"):
+                    changes.append({"pr": 0, "title": seg, "by": "", "repo": "free-text"})
     fields["_changes"] = changes
     fields["_repo_tags"] = repo_tags
     return fields
@@ -177,7 +198,7 @@ def summarize_changes(changes: list[dict]) -> dict:
         flags.append(f"{name}: AX {n_ax} / common {n_cm} / not-AX {n_na}")
         rel_items = [c for c in sel if c["rel"] != "not-AX"][:3]
         if rel_items:
-            txt = "; ".join(f"#{c['pr']} [{c['rel']}] {c['title'][:60].strip()}" for c in rel_items)
+            txt = "; ".join((f"#{c['pr']} " if c["pr"] else "") + f"[{c['rel']}] {c['title'][:60].strip()}" for c in rel_items)
             parts.append(f"{name}: {txt}")
     n_infra = sum(c["infra"] for c in cl)
     return {
@@ -436,13 +457,15 @@ def build_rows(mails: list[dict], subject_regex: str, fuse_df: pd.DataFrame, atl
         subj = m["subject"]
         prod = re.search(r"Class_NVL_([A-Z0-9]+?)\d*C?\b", subj)
         product_tok = "AX" if "NVL_AX" in subj.upper() or tp.startswith("NVLAX") else (prod.group(1) if prod else "")
-        stepping_first = (f.get("Stepping", "") or "").split(",")[0].strip() or ""
         fuse_entries = [x.strip() for x in (f.get("Fuse Path", "")).replace("\r", "").split("\n") if x.strip()]
         fuse_first = fuse_entries[0] if fuse_entries else ""
         fuse_folder = re.split(r"[\\/]", fuse_first.rstrip("\\/"))[-1] if fuse_first else ""
         fz = parse_fuse_folder(fuse_folder)
+        stepping_txt = f.get("Stepping", "") or fz["stepping"]
+        stepping_first = stepping_txt.split(",")[0].strip()
         subj_ms = ""
-        nick = f.get("Test Program Short Name [Nick Name]", "")
+        mnick = re.search(r"H(\d{2}[A-Z]\d{2})", tp)
+        nick = f.get("Test Program Short Name [Nick Name]", "") or (mnick.group(1) if mnick else "")
         for src in (subj.replace(tp, " "), nick):
             ms = SUBJ_MS_RX.search(src)
             if ms:
@@ -457,7 +480,7 @@ def build_rows(mails: list[dict], subject_regex: str, fuse_df: pd.DataFrame, atl
             "release_mail_subject": subj, "release_mail_from": m["from"],
             "built_date": f["_built_date"], "built_to": f["_built_to"],
             "product": product_tok, "bom_group": f.get("BOM Groups", ""),
-            "stepping": f.get("Stepping", ""), "nickname": nick,
+            "stepping": stepping_txt, "nickname": nick, "patch_note": f["_patch"],
             "integrator": f.get("Test Program Integrator", ""), "bm": f.get("BM", ""), "mrv_hri": f.get("MRV / HRI", ""),
             "tos_profile": f.get("TOS Profile", ""),
             "milestone": milestone, "subject_milestone": subj_ms, "fuse_milestone": fuse_ms,
