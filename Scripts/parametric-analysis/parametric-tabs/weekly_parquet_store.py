@@ -230,10 +230,12 @@ def load_release_dates(path: Path) -> dict[str, dt.date]:
     if "tp" not in cols or "release_date" not in cols:
         return {}
     out = {}
-    for tp, d in zip(df[cols["tp"]], df[cols["release_date"]]):
-        d = pd.to_datetime(d, errors="coerce")
-        if isinstance(tp, str) and not pd.isna(d):
-            out[tp] = d.date()
+    key_cols = [cols["tp"]] + [c for lc, c in cols.items() if lc.startswith("tp_key")]
+    for kc in key_cols:
+        for tp, d in zip(df[kc], df[cols["release_date"]]):
+            d = pd.to_datetime(d, errors="coerce")
+            if isinstance(tp, str) and not pd.isna(d):
+                out[tp] = min(out[tp], d.date()) if tp in out else d.date()
     return out
 
 
