@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>NVLAX Parametric Tabs - Overview / Vmin / SICC / DTS</title>
+<title>NVLAX Parametric Tabs - Overview / Vmin / SICC / DTS / TP characterization</title>
 <style>
   body{font-family:Segoe UI,Arial,sans-serif;margin:0;color:#1d2733;background:#f5f7fa}
   header{background:#0b3a6f;color:#fff;padding:10px 18px;display:flex;align-items:center;gap:18px;flex-wrap:wrap}
@@ -47,6 +47,9 @@
   .vbar .vsep{color:#44546a;font-weight:600;border-left:2px solid #b9c4d3;padding-left:14px}
   .dpanel{border:1px solid #d5dde8;padding:6px;background:#fff}
   .dpanel h4{margin:2px 0 4px;font-size:13px}
+  #t-tbl td.chg{text-align:left;white-space:pre-wrap;min-width:620px;max-width:900px;vertical-align:top;line-height:1.35}
+  #t-tbl td{vertical-align:top}
+  #t-tbl tr.sel td{background:#fff8d6}
 </style>
 </head>
 <body>
@@ -59,6 +62,7 @@
   <button data-t="vmin">Vmin</button>
   <button data-t="sicc">SICC</button>
   <button data-t="dts">DTS</button>
+  <button data-t="tpc">TP characterization</button>
 </nav>
 
 <section id="p-ovw" class="panel on">
@@ -153,6 +157,14 @@
   <div class="tbl" id="d-viol"></div>
   <h3>Bucket summary</h3>
   <div class="tbl" id="d-tbl"></div>
+</section>
+
+<section id="p-tpc" class="panel">
+  <div class="ctl">
+    <label><input type="checkbox" id="t-only"> only the test programs selected in the header</label>
+  </div>
+  <div class="info" id="t-info"></div>
+  <div class="tbl" id="t-tbl" style="max-height:none"></div>
 </section>
 
 <details id="unm"><summary>Unmapped / ambiguous tokens</summary><div class="tbl" id="unm-t"></div></details>
@@ -1058,6 +1070,33 @@ function renderPattern() {
     { h: 'Count', k: 'n' }, { h: '% of units', f: r => fmt(r.pct, 1) }, { h: 'Max total', k: 'tot' }]);
 }
 
+/* ---------------- TP characterization ---------------- */
+function renderTpc() {
+  const T = D.tpchar || { rows: [], missing: true, source: '' };
+  const selNames = [...SELS].map(p => String(D.programs[p].name).toUpperCase());
+  const isSel = r => r.tp_key_s && selNames.some(n => n.startsWith(r.tp_key_s.toUpperCase()) || r.tp_key_s.toUpperCase().startsWith(n));
+  const only = $('#t-only').checked;
+  const rows = T.rows.filter(r => !only || isSel(r));
+  $('#t-info').innerHTML = T.missing
+    ? `<b class="warn">TP_characterization.csv not found</b> (${esc(T.source)}); run build_tp_characterization.py.`
+    : `${rows.length} of ${T.rows.length} NVLAX test programs (AHMT excluded), sorted by release date; rows of the test programs selected in the header are highlighted. ` +
+      `Release date = earliest release mail; Atlas mapping: PO to [A0] PO Start, EVS / EVS_Plus1 / EVS2 to [A0] ES1. ` +
+      `Changes: NA = category not relevant for the TP. Source: ${esc(T.source)} (modified ${esc(T.modified)}).`;
+  const near = r => String(r.milestone_near).toLowerCase() === 'true';
+  const wk = r => r.weeks_release_to_atlas === '' ? '' : `${Number(r.weeks_release_to_atlas) > 0 ? '+' : ''}${esc(r.weeks_release_to_atlas)}` + (near(r) ? ' (near)' : '');
+  const cols = [
+    { h: 'TP', f: r => `<b>${esc(r.tp)}</b>`, l: 1 }, { h: 'Release date', k: 'release_date', l: 1 }, { h: 'Built', k: 'built_date', l: 1 },
+    { h: 'Milestone', f: r => esc(r.milestone) + (String(r.milestone_conflict).toLowerCase() === 'true' ? ' <span class="warn" title="subject and fuse folder disagree">(conflict)</span>' : ''), l: 1 },
+    { h: 'Stepping', k: 'stepping', l: 1 }, { h: 'Fuse folder', k: 'fuse_folder', l: 1 },
+    { h: 'Atlas milestone', k: 'atlas_milestone', l: 1 }, { h: 'Atlas date', k: 'atlas_date', l: 1 }, { h: 'Release to Atlas (wks)', f: wk },
+    { h: 'TP changes', f: r => esc(r.changes_summary), chg: 1 }];
+  let h = '<table><tr>' + cols.map(c => `<th class="${c.l ? 'l' : ''}">${esc(c.h)}</th>`).join('') + '</tr>';
+  for (const r of rows) {
+    h += `<tr class="${isSel(r) ? 'sel' : ''}">` + cols.map(c => `<td class="${c.chg ? 'chg' : (c.l ? 'l' : '')}">${c.f ? c.f(r) : esc(r[c.k] ?? '')}</td>`).join('') + '</tr>';
+  }
+  $('#t-tbl').innerHTML = rows.length ? h + '</table>' : '<span class="muted">No data for this selection.</span>';
+}
+
 /* ---------------- shared ---------------- */
 function renderUnmapped() {
   $('#unm').querySelector('summary').textContent = `Unmapped / ambiguous tokens (${D.unmapped.length})`;
@@ -1075,7 +1114,7 @@ function renderFoot() {
     ' (programs outside this list are tagged standard-name / other).';
 }
 function renderVminAll() { renderVmin(); renderPareto(); renderPattern(); }
-function renderAll() { renderOvw(); renderVminAll(); renderSicc(); renderDts(); }
+function renderAll() { renderOvw(); renderVminAll(); renderSicc(); renderDts(); renderTpc(); renderTpc(); }
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('on', p.id === 'p-' + b.dataset.t));
@@ -1083,6 +1122,7 @@ document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
 ['#v-dom', '#v-f', '#v-core'].forEach(i => $(i).onchange = renderVminAll);
 ['#s-fam', '#s-meas', '#s-log', '#s-tok', '#s-sub'].forEach(i => $(i).onchange = renderSicc);
 $('#d-dom').onchange = renderDts;
+$('#t-only').onchange = renderTpc;
 ['#o-cdom', '#o-cmeas', '#o-clog'].forEach(i => $(i).onchange = renderCap);
 ['#l-cor', '#l-mod', '#l-pl', '#l-min'].forEach(i => $(i).onchange = renderPattern);
 initSel(); renderUnmapped(); renderFoot(); renderAll();

@@ -367,8 +367,27 @@ def resolve_upm(pu: str, header: set[str]):
     return None, note
 
 
+TPCHAR_COLS = ["tp", "tp_key_s", "release_date", "built_date", "milestone", "stepping", "fuse_folder", "atlas_milestone",
+               "atlas_date", "weeks_release_to_atlas", "milestone_near", "milestone_conflict", "changes_summary"]
+
+
+def load_tp_characterization(path: Path) -> dict:
+    """TP characterization table (build_tp_characterization.py) embedded as the 'TP characterization' tab."""
+    if not path.is_file():
+        return {"rows": [], "source": str(path), "modified": "", "missing": True}
+    t = pd.read_csv(path, dtype=str).fillna("")
+    for c in TPCHAR_COLS:
+        if c not in t:
+            t[c] = ""
+    t = t.sort_values("release_date")[TPCHAR_COLS]
+    return {"rows": t.to_dict("records"), "source": str(path), "missing": False,
+            "modified": dt.datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M")}
+
+
 def parse_args_and_paths():
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--tp-characterization", default=str(WEEKLY_DIR / "TP_characterization.csv"),
+                    help="TP_characterization.csv for the 'TP characterization' tab (tab shows a notice when the file is missing).")
     ap.add_argument("--input-csv", default="", help="Merged weekly CSV. Default: latest Vmin_YYYYMMDD.csv in the weekly folder.")
     ap.add_argument("--input-parquet", default="", help="Parquet store root (see weekly_parquet_store.py); all TPs in the store are reported. Overrides --input-csv.")
     ap.add_argument("--max-units", type=int, default=DEFAULT_MAX_UNITS,
@@ -1088,7 +1107,8 @@ def main() -> int:
         "officialTokens": sorted(OFFICIAL_TP_TOKENS),
     }
     data = {"status": status, "presiModel": presi_model_name, "params": {"minFit": MIN_FIT_POINTS, "weakR2": WEAK_R2}, "programs": programs, "vmin": vmin_json,
-            "sicc": sicc_json, "dts": dts_json, "ilas": ilas_json, "overview": overview_json, "unmapped": unmapped}
+            "sicc": sicc_json, "dts": dts_json, "ilas": ilas_json, "overview": overview_json, "unmapped": unmapped,
+            "tpchar": load_tp_characterization(Path(args.tp_characterization))}
 
     payload = json.dumps(data, separators=(",", ":"), allow_nan=False).replace("</", "<\\/")
     html = TEMPLATE_PATH.read_text(encoding="utf-8").replace("/*__DATA__*/null", payload)
