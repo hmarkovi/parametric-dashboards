@@ -505,7 +505,8 @@ function buildAgg(src, sel) {
     return Object.values(g).map(rs => {
       const n = rs.reduce((a, r) => a + r.n, 0), med = rs.reduce((a, r) => a + r.med * r.n, 0) / n;
       const min = Math.min(...rs.map(r => r.min)), max = Math.max(...rs.map(r => r.max));
-      return { ...rs[0], p: 0, n, med, min, max, static: max - min <= 1e-3 * Math.abs(med) };
+      return { ...rs[0], p: 0, n, med, min, max, static: max - min <= 1e-3 * Math.abs(med),
+        by: rs.map(r => ({ p: r.p, n: r.n, med: r.med, min: r.min, max: r.max, static: r.static })) };   // per-TP values, for the change comment
     });
   };
   A.sicc = { ...S, series: {}, s2t: mergeS2t(S.s2t || [], 'd'), s2tDom: mergeS2t(S.s2tDom || [], 'dom') };
@@ -541,6 +542,29 @@ function buildAgg(src, sel) {
     delete A.ilas._t;
   }
   return A;
+}
+/* Aggregate mode: comment on an S2T multiplier that is not the same in every aggregated TP, naming the TPs where it changed.
+   by = per-TP rows {p (index into D0.programs), med, min, max, static}; TPs are ordered by release date when TP characterization has it. */
+function s2tNote(by) {
+  if (!by || !by.length) return '';
+  const nm = p => String(D0.programs[p].name), short = p => nm(p).replace(/^NVLAX62A0/, '');
+  const rel = p => { const u = nm(p).toUpperCase(), r = ((D0.tpchar || {}).rows || []).find(x => x.tp_key_s && (u.startsWith(x.tp_key_s.toUpperCase()) || x.tp_key_s.toUpperCase().startsWith(u)));
+    return r && r.release_date ? r.release_date : '9999'; };
+  const g = new Map();   // TPs whose medians agree within the same relative tolerance as "static" (1e-3) share one value
+  [...by].sort((a, b) => a.med - b.med).forEach(r => {
+    const last = [...g.keys()].pop();
+    const k = last !== undefined && Math.abs(r.med - last) <= 1e-3 * Math.abs(last) ? last : r.med;
+    (g.get(k) ?? g.set(k, []).get(k)).push(r.p);
+  });
+  const parts = [];
+  if (g.size > 1) {
+    const grp = [...g].map(([v, ps]) => ({ v: fmt(v, 4), ps: ps.sort((a, b) => rel(a).localeCompare(rel(b)) || nm(a).localeCompare(nm(b))) }))
+      .sort((a, b) => rel(a.ps[0]).localeCompare(rel(b.ps[0])) || a.v.localeCompare(b.v));
+    parts.push('S2T multiplier changed between test programs: ' + grp.map(x => `${x.v} (${x.ps.map(short).join(', ')})`).join(' then '));
+  }
+  const within = by.filter(r => !r.static);
+  if (within.length) parts.push('varies inside ' + within.map(r => `${short(r.p)} (${fmt(r.min, 4)} - ${fmt(r.max, 4)})`).join(', '));
+  return parts.join('; ');
 }
 function initSel() {
   const pop = $('#tp-pop');
@@ -708,7 +732,7 @@ function renderSicc() {
     if (!rs.length) return null;
     const n = rs.reduce((a, x) => a + x.n, 0), med = rs.reduce((a, x) => a + x.med * x.n, 0) / n;
     const min = Math.min(...rs.map(x => x.min)), max = Math.max(...rs.map(x => x.max));
-    return { n, med, min, max, static: max - min <= 1e-3 * Math.abs(med) };
+    return { n, med, min, max, static: max - min <= 1e-3 * Math.abs(med), note: AGG ? s2tNote(rs[0].by) : '' };
   };
   const tgtRows = p => withT.map(x => {
     const raw = stOf(x.t.keys.raw_V1, p), te = stOf(x.t.keys.tester_at_ref, p), sy = stOf(x.t.keys.system_at_ref, p), first = raw || sy || te;
@@ -722,7 +746,8 @@ function renderSicc() {
     { h: 'Raw SICC V1 @ UPM target', f: r => atCell(r.raw) },
     { h: 'Tester @ ref SICC V1 @ UPM target', f: r => atCell(r.te) },
     { h: 'System @ ref SICC V1 @ UPM target', f: r => atCell(r.sy) },
-    { h: 'S2T multiplier (System @ ref / Tester @ ref)', f: r => !r.s2t ? NA : fmt(r.s2t.med, 4) + (r.s2t.static ? '' : ` (varies ${fmt(r.s2t.min, 4)} - ${fmt(r.s2t.max, 4)})`) },
+    { h: 'S2T multiplier (System @ ref / Tester @ ref)', f: r => !r.s2t ? NA : fmt(r.s2t.med, 4) + (r.s2t.static ? '' : ` (varies ${fmt(r.s2t.min, 4)} - ${fmt(r.s2t.max, 4)})`) +
+      (r.s2t.note ? `<div class="warn" style="font-weight:400;white-space:normal;max-width:360px;text-align:left">${esc(r.s2t.note)}</div>` : '') },
     { h: 'System @ ref / PreSi', f: r => r.sysRatio === null ? NA : fmt(r.sysRatio, 3) },
     { h: 'R2 (System @ ref)', f: r => r.sy && r.sy.r2 !== null && r.sy.r2 !== undefined ? fmt(r.sy.r2, 3) : NA }]);
   const usedRows = new Set(withT.map(x => x.t.presiRow));
@@ -745,7 +770,8 @@ function renderSicc() {
     $('#s-s2t').innerHTML = rows.length ? table(rows, [
       { h: 'Domain', f: r => esc(r.d), l: 1 }, { h: 'Test program', f: r => esc(D.programs[r.p].name), l: 1 }, { h: 'N', f: r => r.n },
       { h: 'S2T multiplier', f: r => fmt(r.med, 4) }, { h: 'Static', f: r => r.static ? 'yes' : 'no' },
-      { h: 'Min', f: r => fmt(r.min, 4) }, { h: 'Max', f: r => fmt(r.max, 4) }]) :
+      { h: 'Min', f: r => fmt(r.min, 4) }, { h: 'Max', f: r => fmt(r.max, 4) },
+      ...(AGG ? [{ h: 'Comment', f: r => { const n = s2tNote(r.by); return n ? `<span class="warn">${esc(n)}</span>` : ''; }, l: 1 }] : [])]) :
       `<span class="muted">${NA}: the System at ref / Tester at ref columns are empty for the selected programs.</span>`;
   }
   const isSA = fam === 'SA';
