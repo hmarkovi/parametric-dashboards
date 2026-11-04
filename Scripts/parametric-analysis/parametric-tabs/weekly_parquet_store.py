@@ -111,7 +111,7 @@ def normalize(df: pd.DataFrame, str_cols: set[str]) -> pd.DataFrame:
         if c in str_cols:
             df[c] = df[c].astype("string").str.strip().replace("", pd.NA).astype(object)
             continue
-        if df[c].dtype == object or str(df[c].dtype).startswith("string"):
+        if not pd.api.types.is_numeric_dtype(df[c]):  # object / string / pandas>=3 "str" dtype
             conv = pd.to_numeric(df[c], errors="coerce")
             df[c] = conv if conv.notna().sum() >= df[c].notna().sum() else df[c].astype("string").astype(object)
         elif df[c].dtype != "float64":
