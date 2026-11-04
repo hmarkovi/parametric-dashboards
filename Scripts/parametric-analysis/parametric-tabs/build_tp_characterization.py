@@ -185,21 +185,55 @@ def classify_change(c: dict) -> dict:
     return {**c, "cats": cats, "infra": infra, "rel": rel}
 
 
-def summarize_changes(changes: list[dict]) -> dict:
+SUMMARY_LINES = [  # constant titles, always emitted in this order; each PR is shown once, under its first category
+    ("Thermal", ["Thermal"]),
+    ("New content / plist", ["Content/plist", "Defeature"]),
+    ("GB", ["GB", "Levels/clamps"]),
+    ("Reset", ["Reset"]),
+    ("SICC", ["SICC"]),
+    ("Flow matrix", ["Flow matrix"]),
+    ("Material", ["BM/fuse/UPS", "Material/process"]),
+]
+MAX_PER_LINE = 6
+
+
+def _fmt_item(c: dict) -> str:
+    title = re.sub(r"\s+", " ", c["title"]).strip()
+    title = title[:95].rstrip() + ("..." if len(title) > 95 else "")
+    pr = f"PR {c['pr']}" if c["pr"] else ""
+    if c["rel"] == "not-AX":
+        mt = NOT_AX_RX.search(c["title"])
+        tag = f"not AX28C: {mt.group(0)}" if mt else "not AX28C"
+        return f"{pr} ({tag}) {title}".strip()
+    return f"{pr} {title}".strip()
+
+
+def summarize_changes(changes: list[dict], stepping: str = "", bm: str = "") -> dict:
     cl = [classify_change(c) for c in changes]
-    flags, parts = [], []
+    for c in cl:
+        c["primary"] = c["cats"][0] if c["cats"] else ""
+    flags, lines = [], []
     for name, _ in CATEGORIES:
         sel = [c for c in cl if name in c["cats"]]
-        if not sel:
-            continue
-        n_ax = sum(c["rel"] == "AX" for c in sel)
-        n_cm = sum(c["rel"] == "common" for c in sel)
-        n_na = sum(c["rel"] == "not-AX" for c in sel)
-        flags.append(f"{name}: AX {n_ax} / common {n_cm} / not-AX {n_na}")
-        rel_items = [c for c in sel if c["rel"] != "not-AX"][:3]
-        if rel_items:
-            txt = "; ".join((f"#{c['pr']} " if c["pr"] else "") + f"[{c['rel']}] {c['title'][:60].strip()}" for c in rel_items)
-            parts.append(f"{name}: {txt}")
+        if sel:
+            flags.append(f"{name}: AX {sum(c['rel'] == 'AX' for c in sel)} / "
+                         f"common {sum(c['rel'] == 'common' for c in sel)} / not-AX {sum(c['rel'] == 'not-AX' for c in sel)}")
+    for label, cats in SUMMARY_LINES:
+        sel = [c for c in cl if c["primary"] in cats]
+        sel.sort(key=lambda c: {"AX": 0, "common": 1, "not-AX": 2}[c["rel"]])
+        items = [_fmt_item(c) for c in sel[:MAX_PER_LINE]]
+        if len(sel) > MAX_PER_LINE:
+            items.append(f"+{len(sel) - MAX_PER_LINE} more")
+        head = ""
+        if label == "Material":
+            head = "; ".join(x for x in (f"stepping {stepping}" if stepping else "", f"BM {bm}" if bm else "") if x)
+        body = "; ".join(x for x in (head, "; ".join(items)) if x)
+        lines.append(f"{label}: {body or 'NA'}")
+    n_ax, n_cm = sum(c["rel"] == "AX" for c in cl), sum(c["rel"] == "common" for c in cl)
+    n_na, n_in = sum(c["rel"] == "not-AX" for c in cl), sum(c["infra"] for c in cl)
+    lines.insert(0, f"Changes: {len(cl)} ({n_ax} AX / {n_cm} common / {n_na} not-AX; {n_in} infra/docs excluded)"
+                 if cl else "Changes: NA (no change list in release mail)")
+    parts = lines
     n_infra = sum(c["infra"] for c in cl)
     return {
         "changes_count": len(cl),
@@ -209,7 +243,7 @@ def summarize_changes(changes: list[dict]) -> dict:
         "changes_infra_count": n_infra,
         "changes_note": "" if cl else "no change list in release mail",
         "changes_flags": " | ".join(flags),
-        "changes_summary": " || ".join(parts),
+        "changes_summary": "\n".join(parts),
     }
 
 
@@ -498,7 +532,7 @@ def build_rows(mails: list[dict], subject_regex: str, fuse_df: pd.DataFrame, atl
                 wk = round((a["atlas_date"] - rel_date).days / 7, 1)
                 row["weeks_release_to_atlas"] = wk
                 row["milestone_near"] = abs(wk) <= near_weeks
-        row.update(summarize_changes(f["_changes"]))
+        row.update(summarize_changes(f["_changes"], stepping_txt, f.get("BM", "")))
         rows.append(row)
     print(f"[mail] {len(rows)} TPs from original release mails")
     return pd.DataFrame(rows)
