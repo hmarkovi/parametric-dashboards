@@ -236,6 +236,49 @@ def load_mail_outlook(folder_name: str, mailbox: str | None) -> list[dict]:
     return out
 
 
+GRAPH_CLI = Path(os.environ.get("APPDATA", "")) / "Code/User/globalStorage/forge-store/mcp-servers/m365-apps-mcp/m365-graph-mcp.exe"
+
+
+def _graph_cli(args: list[str], timeout: int = 180) -> dict:
+    import subprocess
+
+    r = subprocess.run([str(GRAPH_CLI), *args, "--raw"], capture_output=True, timeout=timeout,
+                       encoding="utf-8", errors="replace")
+    if r.returncode != 0 or not r.stdout.strip():
+        raise RuntimeError(f"graph cli failed ({r.returncode}): {(r.stderr or r.stdout)[:300]}")
+    j = json.loads(r.stdout)
+    if j.get("success") is False:
+        raise RuntimeError(f"graph cli error: {str(j)[:300]}")
+    return j
+
+
+def load_mail_graph(folder_name: str, subject_regex: str, skip_tps: set[str]) -> list[dict]:
+    """Headless Exchange read via the m365-graph-mcp CLI (shared token cache; run `auth login` once).
+    Lists the folder, picks the earliest original release mail per TP, fetches bodies only for new TPs."""
+    if not GRAPH_CLI.exists():
+        raise RuntimeError(f"Graph CLI not found: {GRAPH_CLI}")
+    listing = _graph_cli(["email", "get", "--folder", folder_name, "--top", "500"], timeout=300)["emails"]
+    rx = re.compile(subject_regex, re.I)
+    first: dict[str, dict] = {}
+    for e in listing:
+        s = e.get("subject", "")
+        mt = TP_RX.search(s)
+        if _is_reply(s) or not rx.search(s) or not mt:
+            continue
+        rt = pd.to_datetime(e["receivedDateTime"], utc=True).to_pydatetime().astimezone().replace(tzinfo=None)
+        tp = mt.group(1)
+        if tp not in first or rt < first[tp]["received"]:
+            first[tp] = {"id": e["id"], "subject": s, "received": rt, "from": e.get("from", "")}
+    todo = {tp: m for tp, m in first.items() if tp not in skip_tps}
+    print(f"[mail] Graph folder '{folder_name}': {len(listing)} mails, {len(first)} TPs, {len(todo)} new")
+    out = []
+    for tp, m in todo.items():
+        r = _graph_cli(["email", "get", "--id", m["id"]], timeout=300)
+        body = (r.get("email") or (r.get("emails") or [{}])[0]).get("body", "")
+        out.append({"subject": m["subject"], "received": m["received"], "from": m["from"], "html": body})
+    return out
+
+
 def load_mail_json(paths: list[str]) -> list[dict]:
     out = []
     for p in paths:
@@ -453,7 +496,8 @@ def upsert(new: pd.DataFrame, out_dir: Path) -> pd.DataFrame:
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--mail-source", choices=["outlook", "json"], default="outlook")
+    ap.add_argument("--mail-source", choices=["graph", "outlook", "json"], default="graph")
+    ap.add_argument("--refresh", action="store_true", help="re-fetch and re-parse TPs already in the table")
     ap.add_argument("--mail-json", nargs="*", default=[], help="Graph email_get JSON export(s) with bodies")
     ap.add_argument("--mailbox", default=None, help="substring of the Outlook store name")
     ap.add_argument("--subject-regex", default=DEFAULT_SUBJECT_REGEX)
@@ -465,7 +509,16 @@ def main(argv=None):
     a = ap.parse_args(argv)
 
     out_dir = Path(a.out_dir)
-    mails = load_mail_outlook(MAIL_FOLDER, a.mailbox) if a.mail_source == "outlook" else load_mail_json(a.mail_json)
+    existing_csv = out_dir / "TP_characterization.csv"
+    known = set()
+    if existing_csv.exists() and not a.refresh:
+        known = set(pd.read_csv(existing_csv, dtype=str)["tp"])
+    if a.mail_source == "graph":
+        mails = load_mail_graph(MAIL_FOLDER, a.subject_regex, known)
+    elif a.mail_source == "outlook":
+        mails = load_mail_outlook(MAIL_FOLDER, a.mailbox)
+    else:
+        mails = load_mail_json(a.mail_json)
     fuse_df = sweep_fuse(Path(a.fuse_dir))
 
     atlas_by_project: dict = {}
@@ -479,8 +532,8 @@ def main(argv=None):
 
     df = build_rows(mails, a.subject_regex, fuse_df, atlas_by_project, a.near_weeks)
     if df.empty:
-        print("No TPs found; nothing written.")
-        return 1
+        print("No new TPs; table unchanged (use --refresh to re-parse all and update Atlas/fuse columns).")
+        return 0
     # fuse inventory with TP references
     if len(fuse_df):
         refs = df.groupby("fuse_folder")["tp"].apply(lambda s: ";".join(s)).to_dict()
