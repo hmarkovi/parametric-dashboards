@@ -283,7 +283,20 @@ def cmd_retention(args) -> int:
 
 
 # ------------------------------------------------------------------ report / status / drilldown
-def build_report(store: Path, max_units: int | None) -> int:
+def refresh_tp_characterization(timeout_s: int = 900) -> None:
+    """Refresh TP_characterization.csv before the report so its tab is current. Best effort: a failure keeps the previous table."""
+    cmd = [sys.executable, str(HERE / "build_tp_characterization.py"), "--refresh"]
+    try:
+        rc = subprocess.call(cmd, timeout=timeout_s)
+        if rc:
+            print(f"WARNING: TP characterization refresh exited {rc}; the report uses the previous table.", file=sys.stderr)
+    except Exception as exc:  # noqa: BLE001 - never block the report on the TP table
+        print(f"WARNING: TP characterization refresh failed ({exc}); the report uses the previous table.", file=sys.stderr)
+
+
+def build_report(store: Path, max_units: int | None, refresh_tp: bool = True) -> int:
+    if refresh_tp:
+        refresh_tp_characterization()
     cmd = [sys.executable, str(HERE / "build_parametric_tabs.py"), "--input-parquet", str(store)]
     if max_units is not None:
         cmd += ["--max-units", str(max_units)]
@@ -291,7 +304,7 @@ def build_report(store: Path, max_units: int | None) -> int:
 
 
 def cmd_report(args) -> int:
-    return build_report(Path(args.store), args.max_units)
+    return build_report(Path(args.store), args.max_units, not args.no_tp_refresh)
 
 
 def cmd_status(args) -> int:
@@ -315,7 +328,7 @@ def cmd_run(args) -> int:
     if rc:
         return rc
     cmd_retention(args)
-    return build_report(Path(args.store), args.max_units)
+    return build_report(Path(args.store), args.max_units, not args.no_tp_refresh)
 
 
 def main() -> int:
@@ -333,6 +346,7 @@ def main() -> int:
         p.add_argument("--release-dates", default=str(DEFAULT_RELEASE_DATES), help="CSV with columns tp, release_date")
         p.add_argument("--apply", action="store_true", help="retention: actually delete eligible CSVs (default is report only)")
         p.add_argument("--max-units", type=int, default=None, help="report: cap on plotted units (see build_parametric_tabs.py)")
+        p.add_argument("--no-tp-refresh", action="store_true", help="report/run: do not refresh TP_characterization.csv before building the report")
         p.set_defaults(fn=fn)
     args = ap.parse_args()
     return args.fn(args)
